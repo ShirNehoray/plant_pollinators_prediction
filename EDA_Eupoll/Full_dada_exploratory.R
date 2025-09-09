@@ -361,7 +361,7 @@ ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
 
 
 # Filter and plot large networks (e.g., N_plants and N_pollinators >= 10, adjust threshold as needed)
-large_net_threshold <- 50  # Define threshold for "large" networks
+large_net_threshold <- 30  # Define threshold for "large" networks
 large_net_counts <- network_summary %>%
   filter(n_plants >= large_net_threshold & n_pollinators >= large_net_threshold)
 
@@ -636,6 +636,18 @@ ggplot(data = europe_map) +
   coord_sf(xlim = c(-10, -5), ylim = c(51, 55)) +
   theme_minimal() +
   labs(title = " Networks in Ireland",
+       x = "Longitude", y = "Latitude") +
+  theme(legend.position = "right")
+
+# Spatial plot zoomed on Germany
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white") +
+  geom_point(data = network_coords, 
+             aes(x = Longitude, y = Latitude), 
+             size = 2, alpha = 0.6) +
+  coord_sf(xlim = c(5, 15), ylim = c(47, 55)) +  # Zoom to Germany
+  theme_minimal() +
+  labs(title = "Networks in Germany",
        x = "Longitude", y = "Latitude") +
   theme(legend.position = "right")
 
