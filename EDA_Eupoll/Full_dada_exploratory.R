@@ -1,4 +1,3 @@
-setwd("/Users/shirn/OneDrive/Documents/master/data")
 setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 
 
@@ -10,19 +9,43 @@ library(bipartite)  # For network analysis
 library(vegan)
 library(tibble)
 library(lubridate)
-
-
+library(igraph)
+library(parallel)
+library(foreach)
+library(doParallel)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(geosphere)
 
 # Read the data
-interactions <- read.csv("Interaction_data.csv")
+# Read CSV with network_id as character
+interactions <- read_csv("Interaction_data.csv",
+                         col_types = cols(
+                           Network_id = col_character()
+                         ))
+
+# Summarize network-level information
+network_summary <- interactions %>%
+  group_by(Study_id,Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+  summarise(
+    n_plants = n_distinct(Plant_original_name),
+    n_pollinators = n_distinct(Pollinator_original_name),
+    .groups = "drop"
+  )
+
+# Inspect result
+head(network_summary)
 
 
 # Number of unique networks
-n_networks <- interactions %>%
+n_networks <- network_summary %>%
   distinct(Network_id) %>%
   count()
 
 print(n_networks)
+
+
 
 # Years of data 
 # Convert to proper Date type
@@ -43,7 +66,7 @@ ggplot(networks_per_year, aes(x = Year, y = n)) +
        x = "Year", y = "Number of networks")
 
 # Count distinct studies in each country
-studies_per_country <- interactions %>%
+studies_per_country <- network_summary %>%
   distinct(Study_id, Country) %>%
   count(Country, name = "Num_studies")
 
@@ -58,15 +81,11 @@ ggplot(studies_per_country, aes(x = reorder(Country, -Num_studies), y = Num_stud
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   scale_y_continuous(breaks = seq(0, max(studies_per_country$Num_studies), by = 2))
 
-
 # Interactions per network 
-interactions$Network_id <- as.character(interactions$Network_id). #sort from the highest to the lowest interactions 
-
 inter_per_net <- interactions %>%
   group_by(Network_id) %>%
   summarise(Total_Interactions = sum(Interaction)) %>%
   arrange(desc(Total_Interactions))
-
 
 # Get unique Network_id - Bio-region pairs
 region_per_net <- interactions %>%
@@ -77,16 +96,8 @@ region_per_net <- interactions %>%
 inter_per_net_with_region <- inter_per_net %>%
   left_join(region_per_net, by = "Network_id")
 
-## Get the data for North Italy 
-# # Filter all rows where the network country is Italy
-# italy_data <- interactions %>%
-#   filter(Country %in% c("Italy"))
-# 
-# # Save to CSV
-# write.csv(italy_data, "italy_networks.csv", row.names = FALSE)
-
 # Count networks per bio-region
-networks_per_bioregion <- interactions %>%
+networks_per_bioregion <- network_summary %>%
   select(Network_id, Bioregion) %>%
   distinct() %>%
   count(Bioregion)
@@ -99,9 +110,8 @@ ggplot(networks_per_bioregion, aes(x = reorder(Bioregion, -n), y = n)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-
 # Count networks per country
-networks_per_country <- interactions %>%
+networks_per_country <- network_summary %>%
   select(Network_id, Country) %>%
   distinct() %>%
   count(Country)
@@ -114,9 +124,8 @@ ggplot(networks_per_country, aes(x = reorder(Country, -n), y = n)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-
 # Get unique network country bio-region combinations
-country_bioregion <- interactions %>%
+country_bioregion <- network_summary %>%
   select(Network_id, Country, Bioregion) %>%
   distinct()
 
@@ -132,8 +141,7 @@ ggplot(networks_per_country, aes(x = reorder(Country, -n), y = n, fill = Bioregi
        x = "Country", y = "Number of Networks") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_brewer(palette = "Set2")  # or use "Dark2", "Paired", etc.
-
+  scale_fill_brewer(palette = "Set2")
 
 
 #---- Interactions analysis ---- 
@@ -168,9 +176,7 @@ mat_plant_x_poll <- interactions %>%
   column_to_rownames("Plant_accepted_name") %>%
   as.matrix()
 
-
 # Accumulation curves 
-
 # accumulation curve for pollinators 
 spec_curve <- specaccum(mat_pollinators, method = "random")
 
@@ -189,8 +195,6 @@ ggplot(df_curve, aes(x = Sites, y = Richness)) +
   labs(x = "Networks", y = "Pollinator species",
        title = "Pollinator Accumulation Curve") +
   theme_minimal(base_size = 14)
-
-
 
 # accumulation curve for plants
 spec_curve_plants <- specaccum(mat_plants, method = "random")
@@ -211,8 +215,6 @@ ggplot(df_curve_plants, aes(x = Sites, y = Richness)) +
        title = "Plants Accumulation Curve") +
   theme_minimal(base_size = 14)
 
-
-
 # accumulation curve for plants and pollinators 
 spec_curve_d <- specaccum(mat_plant_x_poll, method = "random", permutations = 200)
 
@@ -222,7 +224,6 @@ df_d <- data.frame(
   SD          = spec_curve_d$sd
 )
 
-
 #graphing
 ggplot(df_d, aes(x = Plants, y = Pollinators)) +
   geom_ribbon(aes(ymin = Pollinators - SD, ymax = Pollinators + SD),
@@ -231,7 +232,6 @@ ggplot(df_d, aes(x = Plants, y = Pollinators)) +
   labs(x = "Plant species", y = "Pollinator species",
        title = "Aaccumulation curve of Pollinator across Plant") +
   theme_minimal(base_size = 14)
-
 
 #---- Species distribution ----
 
@@ -259,31 +259,21 @@ ggplot(poll_occurrence, aes(x = freq)) +
        y = "Number of species") +
   theme_minimal()
 
-
-# Top pollinators by number of networks
-top_pollinators <- poll_occurrence %>%
-  arrange(desc(n)) %>%
-  head(70)   # change 10 to however many top species you want
-
-# Join with metadata about networks
-top_poll_networks <- interactions %>%   # replace with your full data frame
-  filter(Pollinator_accepted_name %in% top_pollinators$pollinator) %>%
-  distinct(Pollinator_accepted_name, Network_id, Country)
-
-ggplot(top_pollinators, aes(x = reorder(Pollinator_accepted_name, n), y = n)) +
-  geom_col(fill = "darkgreen") +
-  coord_flip() +
-  labs(title = "Top Shared Pollinators Across Networks",
-       x = "Pollinator species", y = "Number of networks") +
-  theme_minimal()
-
-
-
-# ggplot(poll_occurrence, aes(x = freq)) +
-#   geom_density(fill = "skyblue", alpha = 0.5) +
-#   labs(title = "Density of Pollinator Occurrence Frequencies",
-#        x = "Frequency across networks",
-#        y = "Density") +
+# # Top pollinators by number of networks
+# top_pollinators <- poll_occurrence %>%
+#   arrange(desc(n)) %>%
+#   head(70)   # change 10 to however many top species you want
+# 
+# # Join with metadata about networks
+# top_poll_networks <- interactions %>%   # replace with your full data frame
+#   filter(Pollinator_accepted_name %in% top_pollinators$pollinator) %>%
+#   distinct(Pollinator_accepted_name, Network_id, Country)
+# 
+# ggplot(top_pollinators, aes(x = reorder(Pollinator_accepted_name, n), y = n)) +
+#   geom_col(fill = "darkgreen") +
+#   coord_flip() +
+#   labs(title = "Top Shared Pollinators Across Networks",
+#        x = "Pollinator species", y = "Number of networks") +
 #   theme_minimal()
 
 # Calculate occurrence proportion for each plant
@@ -310,38 +300,10 @@ ggplot(plant_occurrence, aes(x = freq)) +
        y = "Number of species") +
   theme_minimal()
 
-
-
-
-
-# # Histogram
-# ggplot(plant_distribution, aes(x = n)) +
-#   geom_histogram(binwidth = 1, fill = "seagreen") +
-#   labs(title = "Distribution of Plant Species Across Networks",
-#        x = "Number of Networks", y = "Number of Plant Species") +
-#   theme_minimal()
-
-# # Number of networks each pollinator appears in
-# pollinator_distribution <- interactions %>%
-#   select(Network_id, Pollinator_accepted_name) %>%
-#   distinct() %>%
-#   count(Pollinator_accepted_name) %>%
-#   arrange(desc(n))
-
-# # Histogram
-# ggplot(pollinator_distribution, aes(x = n)) +
-#   geom_histogram(binwidth = 1, fill = "darkorange") +
-#   labs(title = "Distribution of Plant Species Across Networks",
-#        x = "Number of Networks", y = "Number of Plant Species") +
-#   theme_minimal()
-
-
-
-
-# ---- Habitats ----
+#---- Habitats ----
 
 # Count unique networks per habitat
-habitat_counts <- interactions %>%
+habitat_counts <- network_summary %>%
   select(Network_id, EuPPollNet_habitat) %>%
   distinct() %>%
   count(EuPPollNet_habitat, name = "Num_networks")
@@ -355,7 +317,7 @@ ggplot(habitat_counts, aes(x = reorder(EuPPollNet_habitat, Num_networks), y = Nu
   theme_minimal()
 
 # Habitats per country 
-habitat_country_counts <- interactions %>%
+habitat_country_counts <- network_summary %>%
   select(Network_id, EuPPollNet_habitat, Country) %>%
   distinct() %>%
   count(EuPPollNet_habitat, Country)
@@ -367,7 +329,6 @@ ggplot(habitat_country_counts, aes(x = reorder(EuPPollNet_habitat, -n), y = n, f
        x = "Habitat", y = "Number of Networks") +
   theme_minimal()
 
-
 ggplot(habitat_country_counts, aes(x = reorder(EuPPollNet_habitat, -n), y = n)) +
   geom_bar(stat = "identity", fill = "darkseagreen") +
   coord_flip() +
@@ -376,31 +337,47 @@ ggplot(habitat_country_counts, aes(x = reorder(EuPPollNet_habitat, -n), y = n)) 
        x = "Habitat", y = "Number of Networks") +
   theme_minimal(base_size = 6)
 
-
-
 # ---summarizing species per habitat and pollinator order----
-
-
-
 
 #---- Network Analysis ----
 
-net_species_counts <- interactions %>%
-  select(Network_id, Plant_accepted_name, Pollinator_accepted_name) %>%
-  distinct() %>%
-  group_by(Network_id) %>%
-  summarise(
-    N_plants = n_distinct(Plant_accepted_name),
-    N_pollinators = n_distinct(Pollinator_accepted_name),
-    .groups = "drop"
-  )
+# net_species_counts <- network_summary %>%
+#   select(Network_id, Plant_accepted_name, Pollinator_accepted_name) %>%
+#   distinct() %>%
+#   group_by(Network_id) %>%
+#   summarise(
+#     N_plants = n_distinct(Plant_accepted_name),
+#     N_pollinators = n_distinct(Pollinator_accepted_name),
+#     .groups = "drop"
+#   )
 
 # Plot geom point graph for the number pf plants an dpollinators 
-ggplot(net_species_counts, aes(x = N_plants, y = N_pollinators)) +
+ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   labs(title = "Network Size: Number of Species per Network",
        x = "Number of Plant Species", y = "Number of Pollinator Species") +
   theme_minimal()
+
+
+
+# Filter and plot large networks (e.g., N_plants and N_pollinators >= 10, adjust threshold as needed)
+large_net_threshold <- 50  # Define threshold for "large" networks
+large_net_counts <- network_summary %>%
+  filter(n_plants >= large_net_threshold & n_pollinators >= large_net_threshold)
+
+# # Join with country information
+# large_net_with_country <- large_net_counts %>%
+#   inner_join(interactions %>% distinct(Network_id), by = "Network_id")
+
+ggplot(large_net_counts, aes(x = n_plants, y = n_pollinators, color = Country)) +
+  geom_point(alpha = 0.6, size = 3) +  # Increased size to 3 (adjust as needed)
+  labs(title = paste0("Large Networks (≥ ", large_net_threshold, " Species)"),
+       x = "Number of Plant Species", y = "Number of Pollinator Species") +
+  theme_minimal() +
+  theme(legend.position = "right")  # Adjust legend position as needed
+
+
+
 
 
 # Summaries total interaction count per network and country
@@ -415,7 +392,6 @@ ggplot(net_interactions_country, aes(x = Country, y = Total_interactions)) +
        x = "Country", y = "Total Number of Interactions") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 
 # For indexes calculations 
 
@@ -440,36 +416,230 @@ network_matrices <- lapply(network_mats, function(df) {
   mat
 })
 
-# calculating the indexes for each network 
-network_stats <- lapply(network_matrices, function(m) {
-  m_bin <- (m > 0) * 1
-  data.frame(
-    Connectance = networklevel(m_bin, index = "connectance"),
-    Nestedness  = networklevel(m_bin, index = "nestedness")
-    # H2          = networklevel(m_bin, index = "H2")
-  )
-}) %>% bind_rows(.id = "Network_id")
+# # calculating the indexes for each network 
+# network_stats <- lapply(network_matrices, function(m) {
+#   m_bin <- (m > 0) * 1
+#   data.frame(
+#     Connectance = networklevel(m_bin, index = "connectance"),
+#     Nestedness  = networklevel(m_bin, index = "nestedness")
+#     # H2          = networklevel(m_bin, index = "H2")
+#   )
+# }) %>% bind_rows(.id = "Network_id")
+# 
+# # box plot for the connectance
+# network_stats_full <- network_stats %>%
+#   left_join(interactions %>% distinct(Network_id, Country, Bioregion, EuPPollNet_habitat), by = "Network_id")
+# ggplot(network_stats_full, aes(x = Country, y = Connectance)) +
+#   geom_boxplot(fill = "lightgreen") +
+#   theme_minimal() +
+#   labs(title = "Connectance Across Countries", y = "Connectance", x = "Country") +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# # box plot for the nestedness
+# ggplot(network_stats_full, aes(x = Country, y = Nestedness)) +
+#   geom_boxplot(fill = "salmon") +
+#   theme_minimal() +
+#   labs(title = "Nestedness Across Countries", y = "Nestedness", x = "Country") +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# box plot for the connectance
+# Set up parallel backend
+cores <- detectCores() - 1
+registerDoParallel(cores)
+
+# Step 1: Get network sizes to filter small networks
+network_sizes <- lapply(names(network_matrices), function(net_id) {
+  m <- network_matrices[[net_id]]
+  data.frame(Network_id = net_id, N_plants = nrow(m), N_pollinators = ncol(m))
+}) %>% bind_rows()
+
+# Filter large networks (e.g., >=3 plants and >=3 pollinators)
+large_networks <- network_sizes %>%
+  filter(N_plants >= 3, N_pollinators >= 3) %>%
+  pull(Network_id)
+
+# Step 2: Calculate network metrics for large networks
+network_stats_large <- foreach(net_id = large_networks, .combine = rbind, 
+                               .packages = c("igraph", "bipartite")) %dopar% {
+                                 m_bin <- (network_matrices[[net_id]] > 0) * 1  # Binary matrix
+                                 g <- graph_from_incidence_matrix(m_bin, directed = FALSE)
+                                 g_poll <- bipartite.projection(g)$proj2  # Pollinator projection
+                                 
+                                 # Network metrics
+                                 net_levels <- networklevel(m_bin, index = c("connectance", "NODF"))
+                                 connectance <- net_levels["connectance"]
+                                 nodf <- net_levels["NODF"]
+                                 evenness <- networklevel(m_bin, index = "interaction evenness")
+                                 
+                                 # Modularity (skip if projected network too small)
+                                 mod <- if (vcount(g_poll) >= 5 && ecount(g_poll) >= 5) {
+                                   comm <- cluster_fast_greedy(g_poll)
+                                   modularity(g_poll, membership(comm))
+                                 } else {
+                                   NA
+                                 }
+                                 
+                                 data.frame(
+                                   Network_id = net_id,  # Defined within the loop
+                                   Connectance = connectance,
+                                   Nestedness_NODF = nodf,
+                                   Modularity = mod,
+                                   Interaction_Evenness = evenness
+                                 )
+                               }
+
+# Stop parallel backend
+stopImplicitCluster()
+
+# Step 3: Assign NA to small networks
+small_networks <- setdiff(names(network_matrices), large_networks)
+network_stats_small <- data.frame(
+  Network_id = small_networks,
+  Connectance = NA,
+  Nestedness_NODF = NA,
+  Modularity = NA,
+  Interaction_Evenness = NA
+)
+
+# Combine results
+network_stats <- bind_rows(network_stats_large, network_stats_small)
+
+# Join with metadata
 network_stats_full <- network_stats %>%
-  left_join(interactions %>% distinct(Network_id, Country, Bioregion, EuPPollNet_habitat), by = "Network_id")
+  left_join(interactions %>% distinct(Network_id, Country, Bioregion, EuPPollNet_habitat), by = "Network_id") %>%
+  left_join(network_sizes, by = "Network_id")
+
+# Visualizations
+# Connectance
 ggplot(network_stats_full, aes(x = Country, y = Connectance)) +
   geom_boxplot(fill = "lightgreen") +
   theme_minimal() +
   labs(title = "Connectance Across Countries", y = "Connectance", x = "Country") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# box plot for the nestedness
-ggplot(network_stats_full, aes(x = Country, y = Nestedness)) +
+# Nestedness NODF
+ggplot(network_stats_full, aes(x = Country, y = Nestedness_NODF)) +
   geom_boxplot(fill = "salmon") +
   theme_minimal() +
-  labs(title = "Nestedness Across Countries", y = "Nestedness", x = "Country") +
+  labs(title = "Nestedness (NODF) Across Countries", y = "NODF", x = "Country") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+# Modularity
+ggplot(network_stats_full %>% filter(!is.na(Modularity)), aes(x = Country, y = Modularity)) +
+  geom_boxplot(fill = "lightpink") +
+  theme_minimal() +
+  labs(title = "Modularity Across Countries (Large Networks Only)", y = "Modularity", x = "Country") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# ---- Species-level analysis ----
+# Interaction Evenness
+ggplot(network_stats_full, aes(x = Country, y = Interaction_Evenness)) +
+  geom_boxplot(fill = "lightblue") +
+  theme_minimal() +
+  labs(title = "Interaction Evenness Across Countries", y = "Evenness", x = "Country") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# data frame of the degree of level plants/pollinators 
+# Summary
+cat("Number of small networks (skipped):", nrow(network_stats_small), "\n")
+cat("Number of large networks analyzed:", nrow(network_stats_large), "\n")
+summary(network_stats_full[, c("Connectance", "Nestedness_NODF", "Modularity", "Interaction_Evenness")])
+
+# Step 1: Aggregate coordinates by Network_id
+network_coords <- interactions %>%
+  group_by(Network_id) %>%
+  summarise(Latitude = mean(Latitude, na.rm = TRUE),
+            Longitude = mean(Longitude, na.rm = TRUE)) %>%
+  left_join(network_stats_full, by = "Network_id")
+
+# Step 2: Get a European map
+europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+# Step 3: Create a spatial plot (e.g., Modularity by location)
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white") +
+  geom_point(data = network_coords, 
+             aes(x = Longitude, y = Latitude, color = Modularity), 
+             size = 2, alpha = 0.6) +
+  scale_color_gradient(low = "blue", high = "red", na.value = "gray", 
+                       name = "Modularity") +
+  coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
+  theme_minimal() +
+  labs(title = "Modularity Across European Plant-Pollinator Networks",
+       x = "Longitude", y = "Latitude") +
+  theme(legend.position = "right")
+
+# Repeat for other metrics (e.g., Interaction_Evenness)
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white") +
+  geom_point(data = network_coords, 
+             aes(x = Longitude, y = Latitude, color = Interaction_Evenness), 
+             size = 2, alpha = 0.6) +
+  scale_color_gradient(low = "blue", high = "green", na.value = "gray", 
+                       name = "Evenness") +
+  coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
+  theme_minimal() +
+  labs(title = "Interaction Evenness Across European Networks",
+       x = "Longitude", y = "Latitude") +
+  theme(legend.position = "right")
+
+# Step 2: Extract coordinates for distance calculation
+coords <- network_coords %>%
+  select(Network_id, Latitude, Longitude) %>%
+  distinct()
+
+# Convert to matrix of coordinates
+coord_matrix <- as.matrix(coords[, c("Longitude", "Latitude")])  # Order: lon, lat
+
+# Step 3: Calculate pairwise distances (in kilometers) using Haversine
+dist_matrix <- distm(coord_matrix, fun = distHaversine) / 1000  # Convert meters to km
+rownames(dist_matrix) <- coords$Network_id
+colnames(dist_matrix) <- coords$Network_id
+
+# Step 4: Convert to long format for easier analysis
+dist_long <- as.data.frame(as.table(dist_matrix)) %>%
+  filter(!is.na(Freq)) %>%
+  rename(Network1 = Var1, Network2 = Var2, Distance_km = Freq) %>%
+  filter(Network1 != Network2)
+
+# # Step 5: Summary statistics
+# summary_stats <- dist_long %>%
+#   summarise(
+#     Min_Distance = min(Distance_km),
+#     Mean_Distance = mean(Distance_km),
+#     Max_Distance = max(Distance_km)
+#   )
+# print(summary_stats)
+# 
+# # Example: Find nearest neighbor
+# nearest_neighbor <- dist_long %>%
+#   group_by(Network1) %>%
+#   slice_min(Distance_km, n = 1) %>%
+#   rename(Nearest_Network = Network2, Nearest_Distance_km = Distance_km)
+# network_coords <- network_coords %>%
+#   left_join(nearest_neighbor, by = c("Network_id" = "Network1"))
+# 
+# # Optional Visualization: Map with distances
+# ggplot(data = europe_map) +
+#   geom_sf(fill = "lightgray", color = "white") +
+#   geom_point(data = network_coords, aes(x = Longitude, y = Latitude, color = Nearest_Distance_km), size = 2, alpha = 0.6) +
+#   scale_color_gradient(low = "blue", high = "red", na.value = "gray", name = "Nearest Distance (km)") +
+#   coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
+#   theme_minimal() +
+#   labs(title = "Nearest Neighbor Distances Across Networks",
+#        x = "Longitude", y = "Latitude") +
+#   theme(legend.position = "right")
+
+# Spatial plot zoomed on Ireland
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white") +
+  geom_point(data = network_coords, 
+             aes(x = Longitude, y = Latitude), 
+             size = 2, alpha = 0.6) +
+  coord_sf(xlim = c(-10, -5), ylim = c(51, 55)) +
+  theme_minimal() +
+  labs(title = " Networks in Ireland",
+       x = "Longitude", y = "Latitude") +
+  theme(legend.position = "right")
+
+# Species-level analysis - degree distribution 
 species_roles <- lapply(network_matrices, function(m) {
   m_bin <- (m > 0) * 1
   roles <- specieslevel(m_bin, index = c("degree", "normalized degree"))
@@ -486,15 +656,14 @@ species_roles <- lapply(network_matrices, function(m) {
 }) %>%
   bind_rows(.id = "Network_id")
 
-
-# Diagnose: which networks have >1 metadata row?
-interactions %>%
-  distinct(Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
-  count(Network_id, name = "n_meta_rows") %>%
-  filter(n_meta_rows > 1)
+# # Diagnose: which networks have >1 metadata row?
+# interactions %>%
+#   distinct(Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+#   count(Network_id, name = "n_meta_rows") %>%
+#   filter(n_meta_rows > 1)
 
 # Majority Country per network
-country_mode <- interactions %>%
+country_mode <- network_summary %>%
   count(Network_id, Country, name = "n") %>%
   group_by(Network_id) %>%
   slice_max(n, with_ties = FALSE) %>%
@@ -502,7 +671,7 @@ country_mode <- interactions %>%
   select(Network_id, Country)
 
 # Majority Bioregion per network
-bioregion_mode <- interactions %>%
+bioregion_mode <- network_summary %>%
   count(Network_id, Bioregion, name = "n") %>%
   group_by(Network_id) %>%
   slice_max(n, with_ties = FALSE) %>%
@@ -510,7 +679,7 @@ bioregion_mode <- interactions %>%
   select(Network_id, Bioregion)
 
 # Majority Habitat per network
-habitat_mode <- interactions %>%
+habitat_mode <- network_summary %>%
   count(Network_id, EuPPollNet_habitat, name = "n") %>%
   group_by(Network_id) %>%
   slice_max(n, with_ties = FALSE) %>%
@@ -522,19 +691,9 @@ meta_by_net <- country_mode %>%
   left_join(bioregion_mode, by = "Network_id") %>%
   left_join(habitat_mode, by = "Network_id")
 
-# Safe join (one-to-many: one meta row per network → many species rows)
+# Safe join
 species_roles_full <- species_roles %>%
   left_join(meta_by_net, by = "Network_id")
-
-
-
-
-
-
-
-
-
-
 
 # Join with metadata
 species_roles_full <- species_roles %>%
@@ -548,16 +707,13 @@ top_generalists <- species_roles_full %>%
   group_by(Level) %>%
   slice_head(n = 10)
 
-
 print(top_generalists)
-print(top_specialists)
+# print(top_specialists)
 
 # Plots
-# Histogram of degree 
 ggplot(species_roles_full, aes(x = degree, fill = Level)) +
   geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
   theme_minimal() +
   labs(title = "Degree distribution of plants and pollinators",
        x = "Degree", y = "Number of species")
 
-                    
