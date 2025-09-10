@@ -82,20 +82,21 @@ treatmant_per_net <- interactions %>%
 inter_per_net_with_treatmant <- inter_per_net %>%
   left_join(treatmant_per_net, by = "Network_ID")
 
-# Count networks per bioregion (proxy)
-networks_per_treatmant <- network_summary %>%
-  select(Network_ID, Treatment) %>%
-  distinct() %>%
-  count(Treatment)
+# # Count networks per bioregion (proxy)
+# networks_per_treatmant <- network_summary %>%
+#   select(Network_ID, Treatment) %>%
+#   distinct() %>%
+#   count(Treatment)
 
 
-# Plot
-ggplot(networks_per_treatmant, aes(x = reorder(Treatment, -n), y = n)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(title = "Number of Networks per Bioregion (Proxy)",
-       x = "Treatment", y = "Number of Networks") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# # Plot
+# ggplot(networks_per_treatmant, aes(x = reorder(Treatment, -n), y = n)) +
+#   geom_bar(stat = "identity", fill = "skyblue") +
+#   labs(title = "Number of Networks per Bioregion (Proxy)",
+#        x = "Treatment", y = "Number of Networks") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
 
 
 #---- Interactions analysis ---- 
@@ -249,13 +250,12 @@ ggplot(plant_occurrence, aes(x = freq)) +
 
 # Plot geom point graph for the number of plants and pollinators 
 ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
-  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_point(alpha = 0.6, color = "darkblue", size = 3) +
   scale_x_continuous(breaks = seq(min(network_summary$n_plants),
                                     max(network_summary$n_plants), 
                                     by = 1)) +
   labs(title = "Network Size: Number of Species per Network",
-       x = "Number of Plant Species", y = "Number of Pollinator Species") +
-  theme_minimal()
+       x = "Number of Plant Species", y = "Number of Pollinator Species")
 
 # # Filter and plot large networks (e.g., N_plants and N_pollinators >= 10, adjust threshold as needed)
 # large_net_threshold <- 10  # Lowered threshold for this dataset
