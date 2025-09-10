@@ -12,8 +12,8 @@ library(tibble)
 library(tidyr)
 
 
-# Read in sheets
-net_pa <- read_excel("Kaiser_Bunbury_et_al_2017.xlsx", sheet = "64 networks_no.visits")      # binary presence/absence
+# Read the data sheets ----
+net_pa <- read_excel("Kaiser_Bunbury_et_al_2017.xlsx", sheet = "64 networks_no.visits")      # number of visits
 net_freq <- read_excel("Kaiser_Bunbury_et_al_2017.xlsx", sheet = "64 networks_visitfreq")    # frequency
 plants <- read_excel("Kaiser_Bunbury_et_al_2017.xlsx",
                      sheet = "Plant species",
@@ -28,7 +28,7 @@ info <- read_excel("Kaiser_Bunbury_et_al_2017.xlsx", sheet = "info")
 
 
 
-# 2. Basic dataset inspection----
+# Basic data set inspection----
 
 head(net_pa)
 unique(net_pa$Site)   # sites names (should be 8 sites)
@@ -40,7 +40,7 @@ sum(is.na(net_freq))
 
 
 
-# 3. Species amount ----
+# Species amount ----
 
 # Function that calaulate the number of pollinators and palantsin every web
 
