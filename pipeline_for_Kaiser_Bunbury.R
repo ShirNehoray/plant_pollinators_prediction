@@ -52,9 +52,9 @@ interactions <- interactions %>%
 
 # Summarize network-level information, counting species only for Interaction > 1
 network_summary <- interactions %>%
-  group_by(Network_ID, Site, Treatment) %>%
+  group_by(Network_ID, Site, Treatment, Month) %>%
   summarise(
-    n_plants = n_distinct(`Plant species ID`[Interaction > 1]),
+    n_plants = n_distinct(Plant_species_ID[Interaction > 1]),
     n_pollinators = n_distinct(Pollinator_id[Interaction > 1]),
     .groups = "drop"
   )
@@ -206,7 +206,7 @@ poll_occurrence <- interactions %>%
 # Plots
 ggplot(poll_occurrence, aes(x = n)) +
   geom_histogram( fill = "purple", color = "black") +
-  labs(title = "Distribution of Number of Networks per Number of Pollinators",
+  labs(title = "Pollinatoes Distribution",
        x = "Number of networks",
        y = "Number of pollinator species") +
   theme_minimal()
@@ -214,7 +214,7 @@ ggplot(poll_occurrence, aes(x = n)) +
 #Frequency 
 ggplot(poll_occurrence, aes(x = freq)) +
   geom_histogram(binwidth = 0.05, fill = "purple", color = "black") +
-  labs(title = "Distribution of Pollinator Frequencies",
+  labs(title = "Pollinator Frequency",
        x = "Frequency across networks",
        y = "Number of species") +
   theme_minimal()
@@ -231,20 +231,101 @@ plant_occurrence <- interactions %>%
 # Plot
 ggplot(plant_occurrence, aes(x = n)) +
   geom_histogram(binwidth = 1, fill = "seagreen", color = "black") +
-  labs(title = "Distribution of Number of Networks per Number of Plants",
+  labs(title = "Plants Distribution",
        x = "Number of networks",
        y = "Number of Plant species") +
   theme_minimal()
 
-#fraquency 
+#frequency 
 ggplot(plant_occurrence, aes(x = freq)) +
   geom_histogram(binwidth = 0.05, fill = "seagreen", color = "black") +
-  labs(title = "Distribution of Plant Frequencies",
+  labs(title = " Plant Frequenciy",
        x = "Frequency across networks",
        y = "Number of species") +
   theme_minimal()
 
 
+
+#species richness per month ----
+# Prepare long-format data for plotting (rename groups to match image)
+network_summary_long <- network_summary %>%
+  pivot_longer(cols = c(n_plants, n_pollinators),
+               names_to = "Group",
+               values_to = "Number") %>%
+  mutate(Group = ifelse(Group == "n_plants", "Plants_active", "Pollinators"))
+
+# Bar chart (side-by-side bars for each month, faceted by site)
+ggplot(network_summary_long, aes(x = factor(Month), y = Number, fill = Group)) +
+  geom_col(position = "dodge", width = 0.7) +  # Dodge for side-by-side bars
+  facet_wrap(~Site, ncol = 3) +  # Facet by site (adjust ncol for layout; image uses ~3 per row)
+  # scale_fill_manual(values = c("Plants_active" = "#FF7F7F", "Pollinators" = "darkblue")) +  # Pink/salmon and cyan
+  labs(title = "Richness",
+       x = "Month",
+       y = "Number of Species") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top",  # Or "right" to match image
+        legend.title = element_blank())
+
+# Line chart (lines over months, faceted by site)
+ggplot(network_summary_long, aes(x = Month, y = Number, color = Group, group = Group)) +
+  geom_line(size = 1) +  # Thicker lines for visibility
+  geom_point(size = 2) +  # Add points like in the image
+  facet_wrap(~Site, ncol = 3) +  # Same faceting
+  # scale_color_manual(values = c("Plants_active" = "#FF7F7F", "Pollinators" = "darkblue")) +
+  labs(title = "Richness",
+       x = "Month",
+       y = "Number of Species") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+
+
+
+# Simplified pairwise Jaccard similarity function
+pairwise_jaccard <- function(incidence) {
+  mat <- as.matrix(incidence[, -1])  # Remove Site column, keep presence/absence
+  rownames(mat) <- incidence$Site
+  inter <- mat %*% t(mat)            # Shared species
+  tot <- rowSums(mat)                # Total species per site
+  uni <- outer(tot, tot, "+") - inter  # Union
+  inter / pmax(uni, 1)               # Jaccard similarity
+}
+library(scico)
+
+# Simplified heatmap plot function
+plot_heat <- function(mat, title) {
+  as.data.frame(mat) %>%
+    tibble::rownames_to_column("Site1") %>%
+    tidyr::pivot_longer(-Site1, names_to = "Site2", values_to = "value") %>%
+    ggplot(aes(Site1, Site2, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_continuous_sequential(palette = "Viridis")+
+    labs(title = title, x = "Site", y = "Site", fill = "Jaccard") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+# Identify pollinator columns (after "Floral abundance")
+poll_start <- which(names(net_pa) == "Floral abundance") + 1
+poll_cols <- names(net_pa)[poll_start:ncol(net_pa)]
+
+# Plants: Presence across sites (active if visited at least once)
+plants_mat <- net_pa %>%
+  group_by(Site, `Plant species ID`) %>%
+  summarise(active = as.numeric(any(rowSums(across(all_of(poll_cols)), na.rm = TRUE) > 0)), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = `Plant species ID`, values_from = active, values_fill = 0) %>%
+  arrange(Site)
+
+# Pollinators: Presence across sites (active if visited at least once)
+pollinators_mat <- net_pa %>%
+  group_by(Site) %>%
+  summarise(across(all_of(poll_cols), ~ as.numeric(sum(.x, na.rm = TRUE) > 0)), .groups = "drop") %>%
+  arrange(Site)
+
+# Compute and plot Jaccard similarity heatmaps
+plot_heat(pairwise_jaccard(plants_mat), "Plants — Jaccard Similarity")
+plot_heat(pairwise_jaccard(pollinators_mat), "Pollinators — Jaccard Similarity")
 
 #---- Network Analysis ----
 
@@ -254,7 +335,7 @@ ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
   scale_x_continuous(breaks = seq(min(network_summary$n_plants),
                                     max(network_summary$n_plants), 
                                     by = 1)) +
-  labs(title = "Network Size: Number of Species per Network",
+  labs(title = "Number of Species per Network",
        x = "Number of Plant Species", y = "Number of Pollinator Species")
 
 # # Filter and plot large networks (e.g., N_plants and N_pollinators >= 10, adjust threshold as needed)
@@ -286,7 +367,7 @@ ggplot(net_interactions_site, aes(x = Site, y = Total_interactions)) +
 # For indexes calculations
 
 # Create presence column (1 = present)
-interactions$present <- ifelse(interactions$Interaction > 0)
+interactions$present <- ifelse(interactions$Interaction > 0,1,0)
 
 # Create a named list of matrices (one per network)
 network_mats <- interactions %>%
@@ -446,4 +527,242 @@ ggplot(species_roles_full, aes(x = degree, fill = Level)) +
   labs(title = "Degree distribution of plants and pollinators",
        x = "Degree", y = "Number of species")
 
+# ---- aggregation ----
 
+# --- Network Aggregation by Site ---
+
+# Identify pollinator columns (after "Floral abundance")
+poll_start <- which(names(net_pa) == "Floral abundance") + 1
+poll_cols <- names(net_pa)[poll_start:ncol(net_pa)]
+
+# Build quantitative (weighted) network edges
+edges_freq <- net_freq %>%
+  select(Site, `Plant species ID`, all_of(poll_cols)) %>%
+  pivot_longer(cols = all_of(poll_cols), 
+               names_to = "PollinatorID",
+               values_to = "weight", 
+               values_drop_na = TRUE) %>%
+  mutate(weight = as.numeric(weight)) %>%
+  group_by(Site, `Plant species ID`, PollinatorID) %>%
+  summarise(weight = sum(weight, na.rm = TRUE), .groups = "drop") %>%
+  filter(weight > 0)
+
+# Build binary (presence/absence) network edges
+edges_bin <- net_pa %>%
+  select(Site, `Plant species ID`, all_of(poll_cols)) %>%
+  pivot_longer(cols = all_of(poll_cols), 
+               names_to = "PollinatorID",
+               values_to = "x", 
+               values_drop_na = TRUE) %>%
+  mutate(x = as.numeric(x)) %>%
+  group_by(Site, `Plant species ID`, PollinatorID) %>%
+  summarise(weight = as.numeric(any(x > 0, na.rm = TRUE)), .groups = "drop")
+
+# Function to convert edge list of a site into adjacency matrix
+edge_to_matrix <- function(df_site){
+  m <- xtabs(weight ~ `Plant species ID` + PollinatorID, data = df_site)
+  as.matrix(m)
+}
+
+# # Apply function to all sites
+# site_mats_freq <- split(edges_freq, edges_freq$Site) |> lapply(edge_to_matrix)
+# site_mats_bin <- split(edges_bin, edges_bin$Site) |> lapply(edge_to_matrix)
+# 
+# # Optional: Save matrices as CSV (create directory if it doesn't exist)
+# dir.create("aggregated_by_site", showWarnings = FALSE)
+# invisible(lapply(names(site_mats_freq), function(s){
+#   write.csv(site_mats_freq[[s]],
+#             file = file.path("aggregated_by_site", paste0("network_freq_", s, ".csv")))
+# }))
+# invisible(lapply(names(site_mats_bin), function(s){
+#   write.csv(site_mats_bin[[s]],
+#             file = file.path("aggregated_by_site", paste0("network_bin_", s, ".csv")))
+# }))
+
+# --- Continue with existing pipeline ---
+
+# Apply function to all sites
+site_mats_freq <- split(edges_freq, edges_freq$Site) |> lapply(edge_to_matrix)
+site_mats_bin <- split(edges_bin, edges_bin$Site) |> lapply(edge_to_matrix)
+
+# Optional: Save matrices as CSV (create directory if it doesn't exist)
+dir.create("aggregated_by_site", showWarnings = FALSE)
+invisible(lapply(names(site_mats_freq), function(s){
+  write.csv(site_mats_freq[[s]],
+            file = file.path("aggregated_by_site", paste0("network_freq_", s, ".csv")))
+}))
+invisible(lapply(names(site_mats_bin), function(s){
+  write.csv(site_mats_bin[[s]],
+            file = file.path("aggregated_by_site", paste0("network_bin_", s, ".csv")))
+}))
+
+# --- New Network Summary for 8 Aggregated Networks ---
+
+# Function to summarize species counts from a site matrix (counting only species with interactions)
+summarize_network <- function(mat) {
+  n_plants <- sum(rowSums(mat) > 0)  # Number of plants with at least one interaction
+  n_pollinators <- sum(colSums(mat) > 0)  # Number of pollinators with at least one interaction
+  data.frame(n_plants = n_plants, n_pollinators = n_pollinators)
+}
+
+# Apply to quantitative networks
+site_summary_freq <- lapply(site_mats_freq, summarize_network) %>%
+  do.call(rbind, .) %>%
+  tibble::rownames_to_column("Site")
+
+# Apply to binary networks (optional, for comparison)
+site_summary_bin <- lapply(site_mats_bin, summarize_network) %>%
+  do.call(rbind, .) %>%
+  tibble::rownames_to_column("Site")
+
+# Use quantitative summary as the new network_summary
+network_summary_aggregation <- site_summary_freq
+
+
+#--- graphing ----
+# Prepare long format for plotting
+richness_long <- network_summary_aggregation %>%
+  pivot_longer(cols = c(n_plants, n_pollinators), 
+               names_to = "Group", 
+               values_to = "Richness") %>%
+  mutate(Group = ifelse(Group == "n_plants", "Plants", "Pollinators"))
+
+# Bar chart
+ggplot(richness_long, aes(x = Site, y = Richness, fill = Group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Species Richness by Site", x = "Site", y = "Number of Species", fill = "Group") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# network size
+ggplot(network_summary_aggregation, aes(x = n_plants, y = n_pollinators, label = Site)) +
+  geom_point(size = 3, alpha = 0.6) +
+  geom_text(vjust = -0.5, size = 3) +  # Add site labels
+  labs(title = "Plant vs. Pollinator Richness", x = "Number of Plant Species", y = "Number of Pollinator Species") 
+
+
+#---- Network Analysis for 8 Aggregated Networks ----
+
+# Set up parallel backend
+cores <- detectCores() - 1
+registerDoParallel(cores)
+
+# Function to compute network metrics for a single matrix
+compute_network_metrics <- function(mat) {
+  m_bin <- (mat > 0) * 1  # Convert to binary matrix for some metrics
+  g <- graph_from_incidence_matrix(m_bin, directed = FALSE)
+  g_poll <- bipartite.projection(g)$proj2  # Pollinator projection
+  
+  # Network metrics
+  net_levels <- networklevel(m_bin, index = c("connectance", "NODF"))
+  connectance <- net_levels["connectance"]
+  nodf <- net_levels["NODF"]
+  evenness <- networklevel(m_bin, index = "interaction evenness")
+  
+  # Modularity (skip if projected network too small)
+  mod <- if (vcount(g_poll) >= 5 && ecount(g_poll) >= 5) {
+    comm <- cluster_fast_greedy(g_poll)
+    modularity(g_poll, membership(comm))
+  } else {
+    NA
+  }
+  
+  data.frame(
+    Connectance = connectance,
+    Nestedness_NODF = nodf,
+    Modularity = mod,
+    Interaction_Evenness = evenness
+  )
+}
+
+# Get network sizes to filter small networks
+network_sizes <- lapply(site_mats_bin, dim) %>%  # Use binary matrices for size check
+  do.call(rbind, .) %>%
+  as.data.frame() %>%
+  setNames(c("N_plants", "N_pollinators")) %>%
+  tibble::rownames_to_column("Site")
+
+# Filter large networks (e.g., >= 3 plants and pollinators)
+large_networks <- network_sizes %>%
+  filter(N_plants >= 3, N_pollinators >= 3) %>%
+  pull(Site)
+
+# Compute metrics for large networks in parallel
+network_stats <- foreach(s = large_networks, .combine = rbind, 
+                         .packages = c("igraph", "bipartite")) %dopar% {
+                           mat <- site_mats_bin[[s]]  # Use binary matrix for consistency with original
+                           metrics <- compute_network_metrics(mat)
+                           metrics$Site <- s
+                           metrics
+                         }
+
+# Stop parallel backend
+stopImplicitCluster()
+
+# Join with network sizes for full context
+network_stats_full <- network_stats %>%
+  left_join(network_sizes, by = "Site")
+
+# Visualizations
+# Prepare long format for plotting
+network_stats_long <- network_stats_full %>%
+  pivot_longer(cols = c(Connectance, Nestedness_NODF, Modularity, Interaction_Evenness),
+               names_to = "Metric", values_to = "Value") %>%
+  filter(!is.na(Value))  # Remove NA values (e.g., Modularity if too small)
+
+# Bar plot for all metrics
+ggplot(network_stats_long, aes(x = Site, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Network Metrics Across Sites", x = "Site", y = "Value", fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = c("Connectance" = "lightgreen", 
+                               "Nestedness_NODF" = "salmon", 
+                               "Modularity" = "lightpink", 
+                               "Interaction_Evenness" = "lightblue"))
+
+# Individual bar plots for clarity (optional)
+ggplot(network_stats_full, aes(x = Site, y = Connectance)) +
+  geom_bar(stat = "identity", fill = "purple") +
+  labs(title = "Connectance Across Sites", x = "Site", y = "Connectance") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(network_stats_full, aes(x = Site, y = Nestedness_NODF)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  labs(title = "Nestedness (NODF) Across Sites", x = "Site", y = "NODF") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(network_stats_full %>% filter(!is.na(Modularity)), aes(x = Site, y = Modularity)) +
+  geom_bar(stat = "identity", fill = "lightpink") +
+  labs(title = "Modularity Across Sites", x = "Site", y = "Modularity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(network_stats_full, aes(x = Site, y = Interaction_Evenness)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(title = "Interaction Evenness Across Sites", x = "Site", y = "Evenness") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#---- Interactions per Aggregated Network ----
+
+#---- Total Interactions per Aggregated Network ----
+
+# Calculate total interactions from quantitative matrices
+net_interactions_site <- lapply(site_mats_freq, function(mat) {
+  data.frame(Site = rownames(mat)[1], Total_interactions = sum(mat, na.rm = TRUE))
+}) %>%
+  do.call(rbind, .) %>%
+  tibble::rownames_to_column("Site") %>%
+  select(-Site) %>%  # Remove the extra Site column from rownames
+  mutate(Site = rownames(.)) %>%
+  select(Site, Total_interactions)
+
+# Bar plot of total interactions
+ggplot(net_interactions_site, aes(x = Site, y = Total_interactions)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Total Interactions per Site ", x = "Site", y = "Total Interactions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
