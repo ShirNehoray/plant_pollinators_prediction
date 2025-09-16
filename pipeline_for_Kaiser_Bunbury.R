@@ -529,7 +529,7 @@ ggplot(species_roles_full, aes(x = degree, fill = Level)) +
 
 # ---- aggregation ----
 
-# --- Network Aggregation by Site ---
+# Network Aggregation by Site 
 
 # Identify pollinator columns (after "Floral abundance")
 poll_start <- which(names(net_pa) == "Floral abundance") + 1
@@ -579,7 +579,6 @@ edge_to_matrix <- function(df_site){
 #             file = file.path("aggregated_by_site", paste0("network_bin_", s, ".csv")))
 # }))
 
-# --- Continue with existing pipeline ---
 
 # Apply function to all sites
 site_mats_freq <- split(edges_freq, edges_freq$Site) |> lapply(edge_to_matrix)
@@ -596,7 +595,7 @@ invisible(lapply(names(site_mats_bin), function(s){
             file = file.path("aggregated_by_site", paste0("network_bin_", s, ".csv")))
 }))
 
-# --- New Network Summary for 8 Aggregated Networks ---
+# --- Network Summary for 8 Aggregated Networks ----
 
 # Function to summarize species counts from a site matrix (counting only species with interactions)
 summarize_network <- function(mat) {
@@ -619,7 +618,7 @@ site_summary_bin <- lapply(site_mats_bin, summarize_network) %>%
 network_summary_aggregation <- site_summary_freq
 
 
-#--- graphing ----
+# Graphing 
 # Prepare long format for plotting
 richness_long <- network_summary_aggregation %>%
   pivot_longer(cols = c(n_plants, n_pollinators), 
@@ -710,16 +709,16 @@ network_stats_long <- network_stats_full %>%
                names_to = "Metric", values_to = "Value") %>%
   filter(!is.na(Value))  # Remove NA values (e.g., Modularity if too small)
 
-# Bar plot for all metrics
-ggplot(network_stats_long, aes(x = Site, y = Value, fill = Metric)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Network Metrics Across Sites", x = "Site", y = "Value", fill = "Metric") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_manual(values = c("Connectance" = "lightgreen", 
-                               "Nestedness_NODF" = "salmon", 
-                               "Modularity" = "lightpink", 
-                               "Interaction_Evenness" = "lightblue"))
+# # Bar plot for all metrics
+# ggplot(network_stats_long, aes(x = Site, y = Value, fill = Metric)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   labs(title = "Network Metrics Across Sites", x = "Site", y = "Value", fill = "Metric") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   scale_fill_manual(values = c("Connectance" = "lightgreen", 
+#                                "Nestedness_NODF" = "salmon", 
+#                                "Modularity" = "lightpink", 
+#                                "Interaction_Evenness" = "lightblue"))
 
 # Individual bar plots for clarity (optional)
 ggplot(network_stats_full, aes(x = Site, y = Connectance)) +
@@ -746,10 +745,8 @@ ggplot(network_stats_full, aes(x = Site, y = Interaction_Evenness)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-#---- Interactions per Aggregated Network ----
 
-#---- Total Interactions per Aggregated Network ----
-
+#Interactions per Aggregated Network
 # Calculate total interactions from quantitative matrices
 net_interactions_site <- lapply(site_mats_freq, function(mat) {
   data.frame(Site = rownames(mat)[1], Total_interactions = sum(mat, na.rm = TRUE))
