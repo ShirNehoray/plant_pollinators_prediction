@@ -1,5 +1,7 @@
 setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
-
+setwd("/Users/shirn/Downloads")
+setwd("/Users/shirn/OneDrive/Documents/master")
+setwd("/Users/shirn/OneDrive/Documents/master/data")
 
 # Load necessary libraries
 library(dplyr)
@@ -17,6 +19,7 @@ library(sf)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(geosphere)
+library(readr)
 
 # Read the data
 # Read CSV with network_id as character
