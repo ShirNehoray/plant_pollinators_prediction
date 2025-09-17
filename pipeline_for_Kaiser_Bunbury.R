@@ -763,3 +763,73 @@ ggplot(net_interactions_site, aes(x = Site, y = Total_interactions)) +
   labs(title = "Total Interactions per Site ", x = "Site", y = "Total Interactions") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Add this code after the aggregation section (after creating site_mats_bin and site_mats_freq)
+
+# Map IDs to species names
+plants_map <- plants %>%
+  select(`Plant species ID`, `Plant species name`) %>%
+  rename(Plant_ID = `Plant species ID`, Plant_Name = `Plant species name`)
+
+poll_map <- pollinators %>%
+  select(`Pollinator species ID`, `Pollinator species name`) %>%
+  rename(Poll_ID = `Pollinator species ID`, Poll_Name = `Pollinator species name`)
+
+ # Function to update matrix row/column names with actual species names
+update_matrix_names <- function(mat, plants_map, poll_map) {
+  plant_ids <- rownames(mat)
+  poll_ids <- colnames(mat)
+  
+  plant_names <- plants_map$Plant_Name[match(plant_ids, plants_map$Plant_ID)]
+  poll_names <- poll_map$Poll_Name[match(poll_ids, poll_map$Poll_ID)]
+  
+  rownames(mat) <- ifelse(is.na(plant_names), plant_ids, plant_names)
+  colnames(mat) <- ifelse(is.na(poll_names), poll_ids, poll_names)
+  
+  mat
+}
+
+# Apply to binary matrices (for degree calculation)
+site_mats_bin_named <- lapply(site_mats_bin, update_matrix_names, plants_map = plants_map, poll_map = poll_map)
+
+# Calculate degree for each aggregated network (site)
+species_roles_agg <- lapply(names(site_mats_bin_named), function(site) {
+  m <- site_mats_bin_named[[site]]
+  m_bin <- (m > 0) * 1
+  roles <- specieslevel(m_bin, index = c("degree"))
+  df <- bind_rows(
+    as.data.frame(roles$`higher level`) %>%
+      rownames_to_column("Species") %>%
+      mutate(Level = "Plant"),
+    as.data.frame(roles$`lower level`) %>%
+      rownames_to_column("Species") %>%
+      mutate(Level = "Pollinator")
+  )
+  df$Site <- site
+  df
+}) %>%
+  bind_rows()
+
+# Filter out non-positive degrees to avoid log issues if needed
+species_roles_agg_filtered <- species_roles_agg %>%
+  filter(degree > 0)
+
+# Plot degree distribution with histogram, faceted by Site
+ggplot(species_roles_agg_filtered, aes(x = degree, fill = Level)) +
+  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+  facet_wrap(~ Site, scales = "free") +
+  theme_minimal() +
+  labs(title = "Degree Distribution per Aggregated Network (Site)",
+       x = "Degree", y = "Number of Species") +
+  scale_fill_manual(values = c("Plant" = "seagreen", "Pollinator" = "purple"))
+
+# Alternative: Scatter plot with log y-scale, faceted by Site
+ggplot(species_roles_agg_filtered, aes(x = degree, y = after_stat(count), color = Level)) +
+  geom_point(stat = "bin", bins = 30, alpha = 0.6) +
+  facet_wrap(~ Site, scales = "free") +
+  scale_y_log10() +
+  theme_minimal() +
+  labs(title = "Degree Distribution per Aggregated Network (Log Scale)",
+       x = "Degree", y = "Number of Species (log10)") +
+  scale_color_manual(values = c("Plant" = "seagreen", "Pollinator" = "purple"))

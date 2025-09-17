@@ -340,6 +340,26 @@ ggplot(habitat_country_counts, aes(x = reorder(EuPPollNet_habitat, -n), y = n)) 
        x = "Habitat", y = "Number of Networks") +
   theme_minimal(base_size = 6)
 
+#-- bioregion ----
+
+# Summarize key metrics by bioregion
+bioregion_summary <- network_summary %>%
+  group_by(Bioregion) %>%
+  summarise(
+    Num_Networks = n_distinct(Network_id),
+    Avg_Plants = mean(n_plants, na.rm = TRUE),
+    Avg_Pollinators = mean(n_pollinators, na.rm = TRUE),
+    Total_Interactions = sum(inter_per_net$Total_Interactions[match(Network_id, inter_per_net$Network_id)], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+
+
+
+
+
+
 # ---summarizing species per habitat and pollinator order----
 
 #---- Network Analysis ----
@@ -731,4 +751,5 @@ ggplot(species_roles_full, aes(x = degree, fill = Level)) +
   theme_minimal() +
   labs(title = "Degree distribution of plants and pollinators",
        x = "Degree", y = "Number of species")
+
 
