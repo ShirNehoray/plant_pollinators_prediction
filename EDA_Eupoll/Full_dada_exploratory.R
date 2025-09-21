@@ -355,11 +355,6 @@ bioregion_summary <- network_summary %>%
 
 
 
-
-
-
-
-
 # ---summarizing species per habitat and pollinator order----
 
 #---- Network Analysis ----
@@ -374,12 +369,29 @@ bioregion_summary <- network_summary %>%
 #     .groups = "drop"
 #   )
 
+
+
+
+
+
 # Plot geom point graph for the number pf plants an dpollinators 
 ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   labs(title = "Network Size: Number of Species per Network",
        x = "Number of Plant Species", y = "Number of Pollinator Species") +
   theme_minimal()
+
+# Plot geom point graph for the number of plants and pollinators with bioregion colors
+ggplot(network_summary, aes(x = n_plants, y = n_pollinators, color = Bioregion)) +
+  geom_point(alpha = 0.6, size = 2) +
+  labs(title = "Number of Species per Network",
+       x = "Number of Plant Species", 
+       y = "Number of Pollinator Species",
+       color = "Bioregion") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_brewer(palette = "Set2")  # Or use scale_color_viridis_d() for more colors
+
 
 
 

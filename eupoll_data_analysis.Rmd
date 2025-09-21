@@ -1,0 +1,358 @@
+---
+title: "eupoll"
+output: html_document
+date: "2025-09-20"
+---
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(bipartite)  # For network analysis
+library(vegan)
+library(tibble)
+library(lubridate)
+library(igraph)
+library(parallel)
+library(foreach)
+library(doParallel)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(geosphere)
+library(readr)
+
+# Read the data
+# Read CSV with network_id as character
+interactions <- read_csv("Interaction_data.csv",
+                         col_types = cols(
+                           Network_id = col_character()
+                         ))
+
+# Summarize network-level information
+network_summary <- interactions %>%
+  group_by(Study_id,Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+  summarise(
+    n_plants = n_distinct(Plant_original_name),
+    n_pollinators = n_distinct(Pollinator_original_name),
+    .groups = "drop"
+  )
+
+# Inspect result
+head(network_summary)
+
+
+# Number of unique networks
+n_networks <- network_summary %>%
+  distinct(Network_id) %>%
+  count()
+
+print(n_networks)
+
+
+
+# Years of data 
+# Convert to proper Date type
+interactions$Date <- as.Date(interactions$Date)
+
+# Extract year and month
+interactions <- interactions %>%
+  mutate(Year = year(Date),
+         Month = month(Date, label = TRUE, abbr = TRUE))   # e.g. "Jan", "Feb"
+networks_per_year <- interactions %>%
+  distinct(Network_id, Year) %>%
+  count(Year)
+
+ggplot(networks_per_year, aes(x = Year, y = n)) +
+  geom_col(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Temporal coverage of networks",
+       x = "Year", y = "Number of networks")
+
+# Count distinct studies in each country
+studies_per_country <- network_summary %>%
+  distinct(Study_id, Country) %>%
+  count(Country, name = "Num_studies")
+
+print(studies_per_country)
+
+# Plot
+ggplot(studies_per_country, aes(x = reorder(Country, -Num_studies), y = Num_studies)) +
+  geom_col(fill = "darkseagreen") +
+  theme_minimal() +
+  labs(title = "Number of Studies per Country",
+       x = "Country", y = "Number of Studies") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(breaks = seq(0, max(studies_per_country$Num_studies), by = 2))
+
+# Interactions per network 
+inter_per_net <- interactions %>%
+  group_by(Network_id) %>%
+  summarise(Total_Interactions = sum(Interaction)) %>%
+  arrange(desc(Total_Interactions))
+
+
+# Get unique Network_id - Bio-region pairs
+region_per_net <- interactions %>%
+  select(Network_id, Bioregion) %>%
+  distinct()
+
+# Join with interaction summary
+inter_per_net_with_region <- inter_per_net %>%
+  left_join(region_per_net, by = "Network_id")
+
+# Count networks per bio-region
+networks_per_bioregion <- network_summary %>%
+  select(Network_id, Bioregion) %>%
+  distinct() %>%
+  count(Bioregion)
+
+# Plot
+ggplot(networks_per_bioregion, aes(x = reorder(Bioregion, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Number of Networks per Bioregion",
+       x = "Bioregion", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Count networks per country
+networks_per_country <- network_summary %>%
+  select(Network_id, Country) %>%
+  distinct() %>%
+  count(Country)
+
+# Plot count of networks per country 
+ggplot(networks_per_country, aes(x = reorder(Country, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Number of Networks per Country",
+       x = "Country", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Get unique network country bio-region combinations
+country_bioregion <- network_summary %>%
+  select(Network_id, Country, Bioregion) %>%
+  distinct()
+
+# Count networks per country and attach bior-egion
+networks_per_country <- country_bioregion %>%
+  distinct(Network_id, Country, Bioregion) %>%
+  count(Country, Bioregion)
+
+# Plot
+ggplot(networks_per_country, aes(x = reorder(Country, -n), y = n, fill = Bioregion)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Number of Networks per Country (Colored by Bioregion)",
+       x = "Country", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set2")
+
+#---- Species distribution ----
+
+# Calculate occurrence proportion for each pollinator
+poll_occurrence <- interactions %>%
+  select(Network_id, Pollinator_accepted_name) %>%
+  distinct() %>%
+  count(Pollinator_accepted_name) %>%
+  mutate(freq = n / n_distinct(interactions$Network_id)) %>%
+  arrange(desc(freq)) %>%
+  mutate(rank = row_number())
+
+# Plots
+ggplot(poll_occurrence, aes(x = n)) +
+  geom_histogram(binwidth = 1,  color = "purple") +
+  labs(title = "Distribution of Number of Networks per Number of Pollinators",
+       x = "Number of networks",
+       y = "Number of pollinator species") +
+  theme_minimal()
+
+
+# Calculate occurrence proportion for each plant
+plant_occurrence <- interactions %>%
+  select(Network_id, Plant_accepted_name) %>%
+  distinct() %>%
+  count(Plant_accepted_name) %>%
+  mutate(freq = n / n_distinct(interactions$Network_id)) %>%
+  arrange(desc(freq)) %>%
+  mutate(rank = row_number())
+
+# Plot
+ggplot(plant_occurrence, aes(x = n)) +
+  geom_histogram(binwidth = 1,  color = "seagreen") +
+  labs(title = "Distribution of Number of Networks per Number of Plants",
+       x = "Number of networks",
+       y = "Number of Plants species") +
+  theme_minimal()
+
+#---- Habitats ----
+
+# Count unique networks per habitat
+habitat_counts <- network_summary %>%
+  select(Network_id, EuPPollNet_habitat) %>%
+  distinct() %>%
+  count(EuPPollNet_habitat, name = "Num_networks")
+
+# Plot
+ggplot(habitat_counts, aes(x = reorder(EuPPollNet_habitat, Num_networks), y = Num_networks)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Number of Networks per Habitat",
+       x = "Habitat", y = "Number of Networks") +
+  theme_minimal()
+
+# Habitats per country 
+habitat_country_counts <- network_summary %>%
+  select(Network_id, EuPPollNet_habitat, Country) %>%
+  distinct() %>%
+  count(EuPPollNet_habitat, Country)
+
+ggplot(habitat_country_counts, aes(x = reorder(EuPPollNet_habitat, -n), y = n, fill = Country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Networks per Habitat and Country",
+       x = "Habitat", y = "Number of Networks") +
+  theme_minimal()
+
+
+
+# Plot geom point graph for the number pf plants an dpollinators 
+ggplot(network_summary, aes(x = n_plants, y = n_pollinators)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  labs(title = " Number of Species per Network",
+       x = "Number of Plant Species", y = "Number of Pollinator Species") +
+  theme_minimal()
+
+# Plot geom point graph for the number of plants and pollinators with bioregion colors
+ggplot(network_summary, aes(x = n_plants, y = n_pollinators, color = Bioregion)) +
+  geom_point(alpha = 0.6, size = 2) +
+  labs(title = "Number of Species per Network",
+       x = "Number of Plant Species", 
+       y = "Number of Pollinator Species",
+       color = "Bioregion") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_brewer(palette = "Set2")  # Or use scale_color_viridis_d() for more colors
+
+
+
+
+
+
+
+```
+
+```{r}
+# Step 1: Aggregate coordinates by Network_id and join with bioregion info
+network_coords <- interactions %>%
+  group_by(Network_id) %>%
+  summarise(
+    Latitude = mean(Latitude, na.rm = TRUE),
+    Longitude = mean(Longitude, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(network_summary %>% select(Network_id, Bioregion), by = "Network_id")
+
+# Step 2: Get a European map
+europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+# Step 3: Create the spatial plot with bioregion colors (matching your figure)
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white", linewidth = 0.5) +
+  geom_point(data = network_coords, 
+             aes(x = Longitude, y = Latitude, color = Bioregion), 
+             size = 1, alpha = 0.8) +
+  # Custom colors to match your figure
+  scale_color_manual(
+    values = c(
+      "Alpine" = "#7F7FFF",           # Purple
+      "Atlantic" = "#0072B2",         # Blue  
+      "Boreal" = "#009E73",           # Teal/Green
+      "Continental" = "#56B4E9",      # Light blue
+      "Mediterranean" = "#E69F00",    # Orange
+      "Pannonian" = "#F0E442",        # Yellow
+      "Steppic" = "#CC79A7"           # Pink
+    ),
+    name = "Bioregion",
+    labels = c("Alpine", "Atlantic", "Boreal", "Continental", 
+               "Mediterranean", "Pannonian", "Steppic")
+  ) +
+  coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
+  theme_minimal() +
+  labs(
+    title = "Geographical location of all networks in the EuPPollNet database coloured by bioregion",
+    x = "Longitude", 
+    y = "Latitude",
+    subtitle = NULL
+  ) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 11, face = "bold"),
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+    plot.title.position = "plot"
+  )
+```
+```{r}
+# Step 1: Filter coordinates for Estonia only and join with bioregion info
+network_coords_estonia <- interactions %>%
+  filter(Country == "Estonia") %>%
+  group_by(Network_id) %>%
+  summarise(
+    Latitude = mean(Latitude, na.rm = TRUE),
+    Longitude = mean(Longitude, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(network_summary %>% select(Network_id, Bioregion), by = "Network_id")
+
+# Step 2: Get a European map (or Baltic region map for better focus)
+europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+# Option 1: Zoomed view on Estonia with European context
+ggplot(data = europe_map) +
+  geom_sf(fill = "lightgray", color = "white", linewidth = 0.5) +
+  geom_point(data = network_coords_estonia, 
+             aes(x = Longitude, y = Latitude, color = Bioregion), 
+             size = 3, alpha = 0.8) +
+  # Custom colors for bioregions
+  scale_color_manual(
+    values = c(
+      "Alpine" = "#7F7FFF",           # Purple
+      "Atlantic" = "#0072B2",         # Blue  
+      "Boreal" = "#009E73",           # Teal/Green
+      "Continental" = "#56B4E9",      # Light blue
+      "Mediterranean" = "#E69F00",    # Orange
+      "Pannonian" = "#F0E442",        # Yellow
+      "Steppic" = "#CC79A7"           # Pink
+    ),
+    name = "Bioregion"
+  ) +
+  # Zoom specifically to Estonia/Baltic region
+  coord_sf(xlim = c(23, 30), ylim = c(57.5, 60)) +
+  theme_minimal() +
+  labs(
+    title = "Plant-Pollinator Networks in Estonia",
+    x = "Longitude", 
+    y = "Latitude"
+  ) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 11, face = "bold"),
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 12, face = "bold", hjust = 0.5)
+  )
+
+```
+
+```{r}
+
+```
+
