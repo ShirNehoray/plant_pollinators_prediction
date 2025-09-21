@@ -4,6 +4,7 @@ output: html_document
 date: "2025-09-20"
 ---
 ```{r}
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 # Load necessary libraries
 library(dplyr)
 library(tidyr)
@@ -243,9 +244,10 @@ ggplot(network_summary, aes(x = n_plants, y = n_pollinators, color = Bioregion))
 ```
 
 ```{r}
-# Step 1: Aggregate coordinates by Network_id and join with bioregion info
+
+# Aggregate coordinates by Network_id and country  
 network_coords <- interactions %>%
-  group_by(Network_id) %>%
+  group_by(Network_id, Country) %>%
   summarise(
     Latitude = mean(Latitude, na.rm = TRUE),
     Longitude = mean(Longitude, na.rm = TRUE),
@@ -253,25 +255,25 @@ network_coords <- interactions %>%
   ) %>%
   left_join(network_summary %>% select(Network_id, Bioregion), by = "Network_id")
 
-# Step 2: Get a European map
+# Get a European map
 europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
 
-# Step 3: Create the spatial plot with bioregion colors (matching your figure)
+# Create the spatial plot with bioregion colors
 ggplot(data = europe_map) +
-  geom_sf(fill = "lightgray", color = "white", linewidth = 0.5) +
+  geom_sf(fill = "beige", color = "black", linewidth = 0.2) +
   geom_point(data = network_coords, 
              aes(x = Longitude, y = Latitude, color = Bioregion), 
              size = 1, alpha = 0.8) +
   # Custom colors to match your figure
   scale_color_manual(
     values = c(
-      "Alpine" = "#7F7FFF",           # Purple
-      "Atlantic" = "#0072B2",         # Blue  
-      "Boreal" = "#009E73",           # Teal/Green
-      "Continental" = "#56B4E9",      # Light blue
-      "Mediterranean" = "#E69F00",    # Orange
-      "Pannonian" = "#F0E442",        # Yellow
-      "Steppic" = "#CC79A7"           # Pink
+      "Alpine" = "#7F7FFF",           
+      "Atlantic" = "#0072B2",         
+      "Boreal" = "#009E73",           
+      "Continental" = "#56B4E9",      
+      "Mediterranean" = "#E69F00",    
+      "Pannonian" = "#F0E442",        
+      "Steppic" = "#CC79A7"           
     ),
     name = "Bioregion",
     labels = c("Alpine", "Atlantic", "Boreal", "Continental", 
@@ -280,7 +282,7 @@ ggplot(data = europe_map) +
   coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
   theme_minimal() +
   labs(
-    title = "Geographical location of all networks in the EuPPollNet database coloured by bioregion",
+    title = "Geographical location of all networks in the EuPPollNet",
     x = "Longitude", 
     y = "Latitude",
     subtitle = NULL
@@ -298,7 +300,7 @@ ggplot(data = europe_map) +
   )
 ```
 ```{r}
-# Step 1: Filter coordinates for Estonia only and join with bioregion info
+# Filter coordinates for Estonia only 
 network_coords_estonia <- interactions %>%
   filter(Country == "Estonia") %>%
   group_by(Network_id) %>%
@@ -309,25 +311,25 @@ network_coords_estonia <- interactions %>%
   ) %>%
   left_join(network_summary %>% select(Network_id, Bioregion), by = "Network_id")
 
-# Step 2: Get a European map (or Baltic region map for better focus)
+# Get a European map 
 europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
 
-# Option 1: Zoomed view on Estonia with European context
+# Zoomed view on Estonia 
 ggplot(data = europe_map) +
-  geom_sf(fill = "lightgray", color = "white", linewidth = 0.5) +
+  geom_sf(fill = "beige", color = "black", linewidth = 0.2) +
   geom_point(data = network_coords_estonia, 
              aes(x = Longitude, y = Latitude, color = Bioregion), 
              size = 3, alpha = 0.8) +
   # Custom colors for bioregions
   scale_color_manual(
     values = c(
-      "Alpine" = "#7F7FFF",           # Purple
-      "Atlantic" = "#0072B2",         # Blue  
-      "Boreal" = "#009E73",           # Teal/Green
-      "Continental" = "#56B4E9",      # Light blue
-      "Mediterranean" = "#E69F00",    # Orange
-      "Pannonian" = "#F0E442",        # Yellow
-      "Steppic" = "#CC79A7"           # Pink
+      "Alpine" = "#7F7FFF",           
+      "Atlantic" = "#0072B2",         
+      "Boreal" = "#009E73",           
+      "Continental" = "#56B4E9",      
+      "Mediterranean" = "#E69F00",    
+      "Pannonian" = "#F0E442",        
+      "Steppic" = "#CC79A7"           
     ),
     name = "Bioregion"
   ) +
@@ -348,6 +350,50 @@ ggplot(data = europe_map) +
     legend.title = element_text(size = 11, face = "bold"),
     legend.text = element_text(size = 9),
     plot.title = element_text(size = 12, face = "bold", hjust = 0.5)
+  )
+
+
+# Differ according to Study_id
+
+# Filter coordinates for Estonia only 
+network_coords_estonia_2 <- interactions %>%
+  filter(Country == "Estonia") %>%
+  group_by(Network_id) %>%
+  summarise(
+    Latitude = mean(Latitude, na.rm = TRUE),
+    Longitude = mean(Longitude, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(network_summary %>% select(Network_id, Study_id), by = "Network_id")
+
+# Get a European map 
+europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+# Zoomed view on Estonia colored by Study
+ggplot(data = europe_map) +
+  geom_sf(fill = "beige", color = "black", linewidth = 0.2) +
+  geom_point(data = network_coords_estonia_2, 
+             aes(x = Longitude, y = Latitude, color = Study_id), 
+             size = 3, alpha = 0.8) +
+  # Use automatic color palette for studies (or manual if you want specific colors)
+  scale_color_viridis_d(name = "Study") +
+  coord_sf(xlim = c(23, 30), ylim = c(57.5, 60)) +
+  theme_minimal() +
+  labs(
+    title = "Plant-Pollinator Networks in Estonia",
+    x = "Longitude", 
+    y = "Latitude"
+  ) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 11, face = "bold"),
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 8),
+    plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5)
   )
 
 ```

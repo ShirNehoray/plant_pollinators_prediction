@@ -1,0 +1,275 @@
+---
+title: "Species Similarity Between Bioregions"
+output: html_document
+date: "2025-09-21"
+---
+```{r}
+# Load needed packages
+library(dplyr)
+library(ggplot2)
+library(colorspace)
+library(bipartite)   # for network analysis
+library(tidyr)
+library(readr)
+library(vegan)
+
+# Read the data
+data <- read.csv("Interaction_data.csv", encoding = "latin1")
+
+# Get unique species lists for each network
+species_per_network <- data %>%
+  group_by(Bioregion, Network_id) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Function to calculate Jaccard similarity
+jaccard_similarity <- function(set1, set2) {
+  inter <- length(intersect(set1, set2))
+  union <- length(union(set1, set2))
+  if (union == 0) return(NA) else return(inter / union)
+}
+
+# Loop over each bioregion and create heatmap for each one
+bioregions <- unique(species_per_network$Bioregion)
+```
+
+```{r}
+# For plants species 
+
+for (bio in bioregions) {
+  cat("Plotting Bioregion:", bio, "\n")
+  
+  sub_data <- species_per_network %>% filter(Bioregion == bio)
+  nets <- sub_data$Network_id
+  
+  # Build similarity matrix
+  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+                dimnames = list(nets, nets))
+  for (i in seq_along(nets)) {
+    for (j in seq_along(nets)) {
+      mat[i,j] <- jaccard_similarity(sub_data$Plants[[i]], sub_data$Plants[[j]])
+    }
+  }
+  
+  # Turn into dataframe for ggplot
+  mat_df <- as.data.frame(as.table(mat))
+  
+  # Plot heatmap
+  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
+    geom_tile(color = "white", size = 0.01)  +
+    scale_fill_continuous_sequential(palette = "Viridis",) +
+    theme_minimal() +
+    labs(title = paste("Plant species similarity -", bio),
+         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+          axis.text.y = element_text(size = 3))
+  
+  
+  print(p)
+}
+
+```
+
+```{r}
+# For pollinators species 
+
+for (bio in bioregions) {
+  cat("Plotting Bioregion:", bio, "\n")
+  
+  sub_data <- species_per_network %>% filter(Bioregion == bio)
+  nets <- sub_data$Network_id
+  
+  # Build similarity matrix
+  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+                dimnames = list(nets, nets))
+  for (i in seq_along(nets)) {
+    for (j in seq_along(nets)) {
+      mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
+    }
+  }
+  
+  # Turn into dataframe for ggplot
+  mat_df <- as.data.frame(as.table(mat))
+  
+  # Plot heatmap
+  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
+    geom_tile(color = "white", size = 0.01) +
+    scale_fill_continuous_sequential(palette = "Viridis") +
+    theme_minimal() +
+    labs(title = paste("Pollinators species similarity -", bio),
+         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+          axis.text.y = element_text(size = 3))
+  
+  
+  print(p)
+}
+
+```
+```{r}
+
+# Get the Network with the heights similarity (boreal)
+# Get unique species lists for each network
+boreal_summary <- data %>%
+  filter(Bioregion == "Boreal")
+
+# Count networks by country within the Boreal bioregion
+boreal_networks_by_country <- boreal_summary %>%
+  select(Network_id, Country) %>%
+  distinct() %>%
+  count(Country, name = "Num_Networks") %>%
+  arrange(desc(Num_Networks))
+
+# Pie chart (if you prefer circular representation)
+
+library(scales)
+boreal_pie <- ggplot(boreal_networks_by_country, aes(x = "", y = Num_Networks, fill = Country)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(
+    title = "Proportion of Boreal Networks by Country",
+    fill = "Country"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 9)
+  ) +
+  scale_fill_brewer(palette = "Set2")
+
+print(boreal_pie)
+```
+```{r}
+# Focusing in Estonia 
+
+# Create a complete Estonia-only dataset with all relevant columns
+estonia_data <- data %>%
+  filter(Country == "Estonia")
+
+
+# Get unique species lists for each network
+species_per_network <- estonia_data %>%
+  group_by(Bioregion, Network_id) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Function to calculate Jaccard similarity
+jaccard_similarity <- function(set1, set2) {
+  inter <- length(intersect(set1, set2))
+  union <- length(union(set1, set2))
+  if (union == 0) return(NA) else return(inter / union)
+}
+
+# Loop over each bioregion and create heatmap for each one
+bioregions <- unique(species_per_network$Bioregion)
+
+# For plants species 
+
+for (bio in bioregions) {
+  cat("Plotting Bioregion:", bio, "\n")
+  
+  sub_data <- species_per_network %>% filter(Bioregion == bio)
+  nets <- sub_data$Network_id
+  
+  # Build similarity matrix
+  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+                dimnames = list(nets, nets))
+  for (i in seq_along(nets)) {
+    for (j in seq_along(nets)) {
+      mat[i,j] <- jaccard_similarity(sub_data$Plants[[i]], sub_data$Plants[[j]])
+    }
+  }
+  
+  # Turn into dataframe for ggplot
+  mat_df <- as.data.frame(as.table(mat))
+  
+  # Plot heatmap
+  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
+    geom_tile(color = "white", size = 0.01)  +
+    scale_fill_continuous_sequential(palette = "Viridis",) +
+    theme_minimal() +
+    labs(title = paste("Plant species similarity -", bio),
+         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+          axis.text.y = element_text(size = 3))
+  
+  
+  print(p)
+}
+
+#for pollinators 
+
+for (bio in bioregions) {
+  cat("Plotting Bioregion:", bio, "\n")
+  
+  sub_data <- species_per_network %>% filter(Bioregion == bio)
+  nets <- sub_data$Network_id
+  
+  # Build similarity matrix
+  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+                dimnames = list(nets, nets))
+  for (i in seq_along(nets)) {
+    for (j in seq_along(nets)) {
+      mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
+    }
+  }
+  
+  # Turn into dataframe for ggplot
+  mat_df <- as.data.frame(as.table(mat))
+  
+  # Plot heatmap
+  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
+    geom_tile(color = "white", size = 0.01) +
+    scale_fill_continuous_sequential(palette = "Viridis") +
+    theme_minimal() +
+    labs(title = paste("Pollinators species similarity -", bio),
+         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+          axis.text.y = element_text(size = 3))
+  
+  
+  print(p)
+}
+
+```
+
+```{r}
+# Recreate network summary for Estonia only
+network_summary_estonia <- estonia_data %>%
+  group_by(Study_id, Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+  summarise(
+    n_plants = n_distinct(Plant_original_name),
+    n_pollinators = n_distinct(Pollinator_original_name),
+    .groups = "drop"
+  )
+
+# Number of unique networks
+n_networks <- network_summary_estonia %>%
+  distinct(Network_id, Study_id) %>%
+  count()
+
+print(n_networks)
+
+ggplot(network_summary_estonia, aes(x = n_plants, y = n_pollinators, color = Study_id)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "Network Size in Estonia",
+       x = "Number of Plant Species", 
+       y = "Number of Pollinator Species",
+       color = "Study") +
+  theme_minimal() +
+  scale_color_viridis_d()
+
+
+```
+```{r}
+
+```
+

@@ -2,6 +2,7 @@ setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 setwd("/Users/shirn/Downloads")
 setwd("/Users/shirn/OneDrive/Documents/master")
 setwd("/Users/shirn/OneDrive/Documents/master/data")
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 
 # Load necessary libraries
 library(dplyr)
@@ -43,11 +44,10 @@ head(network_summary)
 
 # Number of unique networks
 n_networks <- network_summary %>%
-  distinct(Network_id) %>%
+  distinct(Network_id, Study_id) %>%
   count()
 
 print(n_networks)
-
 
 
 # Years of data 
