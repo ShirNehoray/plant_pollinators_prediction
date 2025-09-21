@@ -270,6 +270,84 @@ ggplot(network_summary_estonia, aes(x = n_plants, y = n_pollinators, color = Stu
 
 ```
 ```{r}
+# After building the similarity matrix, filter for highest similarity pairs (excluding diagonal)
+for (bio in bioregions) {
+  cat("Processing Bioregion:", bio, "\n")
+  
+  sub_data <- species_per_network %>% filter(Bioregion == bio)
+  nets <- sub_data$Network_id
+  
+  # Build similarity matrix
+  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+                dimnames = list(nets, nets))
+  for (i in seq_along(nets)) {
+    for (j in seq_along(nets)) {
+      mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
+    }
+  }
+  
+  # Convert to dataframe and filter out diagonal (i != j)
+  mat_df <- as.data.frame(as.table(mat)) %>%
+    filter(Var1 != Var2) %>%  # Exclude diagonal (self-comparisons)
+    filter(!is.na(Freq)) %>%  # Remove any NA values
+    
+    # Find top N most similar pairs (e.g., top 10)
+    arrange(desc(Freq)) %>%
+    slice_head(n = 10)  # Adjust number as needed
+  
+  # Print the most similar pairs
+  cat("Top similar network pairs in", bio, ":\n")
+  print(mat_df)
+  
+  # Optional: Create a simplified visualization of just the top pairs
+  # (You could make a network graph or simple table plot)
+  if (nrow(mat_df) > 0) {
+    # Simple bar plot of top similarities
+    top_sim_plot <- ggplot(mat_df, aes(x = reorder(paste(Var1, "-", Var2), Freq), y = Freq)) +
+      geom_col(fill = "steelblue", alpha = 0.7) +
+      coord_flip() +
+      labs(title = paste("Top 10 Most Similar Network Pairs -", bio),
+           x = "Network Pair", y = "Jaccard Similarity",
+           subtitle = paste("Showing networks with highest pollinator composition similarity")) +
+      theme_minimal() +
+      theme(axis.text.y = element_text(size = 8))
+    
+    print(top_sim_plot)
+  }
+  
+  # Store results for later use (optional)
+  if (!exists("top_similarities")) {
+    top_similarities <- data.frame()
+  }
+  mat_df$Bioregion <- bio
+  top_similarities <- bind_rows(top_similarities, mat_df)
+}
+
+# After the loop, you can summarize all top similarities across bioregions
+if (exists("top_similarities")) {
+  # Overall top similar pairs across all bioregions
+  overall_top <- top_similarities %>%
+    arrange(desc(Freq)) %>%
+    head(20)
+  
+  print("Overall Top 20 Most Similar Network Pairs:")
+  print(overall_top)
+  
+  # Save to CSV
+  write_csv(top_similarities, "top_similar_network_pairs.csv")
+  
+  # Plot overall top similarities
+  ggplot(overall_top, aes(x = reorder(paste(Var1, "-", Var2), Freq), y = Freq, fill = Bioregion)) +
+    geom_col(alpha = 0.7) +
+    coord_flip() +
+    labs(title = "Top 20 Most Similar Network Pairs Across All Bioregions",
+         x = "Network Pair", y = "Jaccard Similarity") +
+    theme_minimal() +
+    scale_fill_brewer(palette = "Set2") +
+    theme(axis.text.y = element_text(size = 8))
+}
+
+
 
 ```
 
