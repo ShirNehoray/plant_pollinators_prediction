@@ -47,8 +47,8 @@ site_candidates <- intersect(
   names(interactions))
 
 
-  # ---------- Read & light typing ----------
-  interactions <- read_csv("Interaction_data.csv", show_col_types = FALSE) %>%
+
+interactions <- read_csv("Interaction_data.csv", show_col_types = FALSE) %>%
     mutate(
       Network_id            = as.character(Network_id),
       Bioregion             = as.character(Bioregion),
@@ -59,15 +59,16 @@ site_candidates <- intersect(
       Country               = as.character(Country)
     )
   
-  # ---------- Utility: safe Jaccard on sets ----------
+  # ---------- Jaccard ----------
   jaccard_sets <- function(a, b) {
     ia <- length(base::intersect(a, b))
     ua <- length(base::union(a, b))
     if (ua == 0) NA_real_ else ia / ua
   }
   
+
   
-  # ---------- Build per-network species counts (to filter) ----------
+  # ---------- number of species per network ----------
   species_per_network <- interactions %>%
     group_by(Bioregion, Network_id) %>%
     summarise(
@@ -85,21 +86,20 @@ site_candidates <- intersect(
     stop(sprintf("No networks in %s with at least %d total species.", bio, min_total))
   }
   
-  # ---------- Build EDGE sets (and optional weights) per network ----------
-  # Edge key format keeps guild identity explicit to avoid name collisions.
-  edge_key <- function(p, a) paste0("EDGE::PLANT::", p, " | POLL::", a)
-  
-  dat_bio <- interactions %>%
-    filter(Bioregion == bio, Network_id %in% nets) %>%
-    # Drop rows with missing species names (cannot form an edge)
-    filter(!is.na(Plant_accepted_name), !is.na(Pollinator_accepted_name)) %>%
-    mutate(edge = edge_key(Plant_accepted_name, Pollinator_accepted_name))
-  
-  # Unweighted: unique edges per network
-  edges_tbl <- dat_bio %>%
-    group_by(Network_id) %>%
-    summarise(items = list(unique(edge)), .groups = "drop") %>%
-    mutate(weights = list(NULL))
+  # # ---------- Build EDGE sets (and optional weights) per network ----------
+  # # Edge key format keeps guild identity explicit to avoid name collisions.
+  # edge_key <- function(p, a) paste0("EDGE::PLANT::", p, " | POLL::", a)
+  # 
+  # dat_bio <- interactions %>%
+  #   filter(Bioregion == bio, Network_id %in% nets) %>%
+  #   # Drop rows with missing species names (cannot form an edge)
+  #   filter(!is.na(Plant_accepted_name), !is.na(Pollinator_accepted_name)) %>%
+  #   mutate(edge = edge_key(Plant_accepted_name, Pollinator_accepted_name))
+  # 
+  # # unique edges per network
+  # edges_tbl <- dat_bio %>%
+  #   group_by(Network_id) %>%
+  #   summarise(items = list(unique(edge)), .groups = "drop")
   
   # ---------- Compute pairwise similarity matrix ----------
   net_ids <- edges_tbl$Network_id
