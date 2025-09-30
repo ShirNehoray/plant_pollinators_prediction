@@ -4,6 +4,7 @@ output: html_document
 date: "2025-09-21"
 ---
 ```{r}
+
 # Load needed packages
 library(dplyr)
 library(ggplot2)
@@ -12,6 +13,8 @@ library(bipartite)   # for network analysis
 library(tidyr)
 library(readr)
 library(vegan)
+
+setwd("/Users/shirn/OneDrive/Documents/master/data")
 
 # Read the data
 data <- read.csv("Interaction_data.csv", encoding = "latin1")
@@ -54,17 +57,17 @@ for (bio in bioregions) {
     }
   }
   
-  # Turn into dataframe for ggplot
+  # Turn into data frame 
   mat_df <- as.data.frame(as.table(mat))
   
   # Plot heatmap
   p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
-    geom_tile(color = "white", size = 0.01)  +
+    geom_tile()  +
     scale_fill_continuous_sequential(palette = "Viridis",) +
     theme_minimal() +
     labs(title = paste("Plant species similarity -", bio),
          x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
-    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 3),
           axis.text.y = element_text(size = 3))
   
   
@@ -91,17 +94,17 @@ for (bio in bioregions) {
     }
   }
   
-  # Turn into dataframe for ggplot
+  # Turn into data frame
   mat_df <- as.data.frame(as.table(mat))
   
   # Plot heatmap
   p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
-    geom_tile(color = "white", size = 0.01) +
+    geom_tile() +
     scale_fill_continuous_sequential(palette = "Viridis") +
     theme_minimal() +
     labs(title = paste("Pollinators species similarity -", bio),
          x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
-    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 3),
           axis.text.y = element_text(size = 3))
   
   
@@ -109,9 +112,125 @@ for (bio in bioregions) {
 }
 
 ```
+
+```{r}
+# # For plants species - Focus on most similar networks per bioregion
+# 
+# # Loop over each bioregion
+# for (bio in bioregions) {
+#   cat("Processing Bioregion for Plants:", bio, "\n")
+#   
+#   sub_data <- species_per_network %>% filter(Bioregion == bio)
+#   nets <- sub_data$Network_id
+#   
+#   # Build similarity matrix
+#   mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+#                 dimnames = list(nets, nets))
+#   for (i in seq_along(nets)) {
+#     for (j in seq_along(nets)) {
+#       if (i == j) {
+#         mat[i,j] <- NA  # Exclude diagonal
+#       } else {
+#         mat[i,j] <- jaccard_similarity(sub_data$Plants[[i]], sub_data$Plants[[j]])
+#       }
+#     }
+#   }
+#   
+#   # Convert to dataframe, filter out NA (including diagonal), and find top 10 pairs
+#   mat_df <- as.data.frame(as.table(mat)) %>%
+#     filter(!is.na(Freq)) %>%  # Remove NA values (diagonal and any others)
+#     arrange(desc(Freq)) %>%
+#     slice_head(n = 10)  # Top 10 most similar pairs
+#   
+#   # Get unique networks involved in top pairs
+#   if (nrow(mat_df) > 0) {
+#     unique_nets <- unique(c(as.character(mat_df$Var1), as.character(mat_df$Var2)))
+#     
+#     # Subset the original matrix to these networks
+#     sub_mat <- mat[unique_nets, unique_nets]
+#     
+#     # Convert subset matrix to dataframe for ggplot
+#     sub_mat_df <- as.data.frame(as.table(sub_mat))
+#     
+#     # Plot heatmap for the subset
+#     p <- ggplot(sub_mat_df, aes(Var1, Var2, fill = Freq)) +
+#       geom_tile(color = "white", size = 0.01) +
+#       scale_fill_continuous_sequential(palette = "Viridis", na.value = "grey90") +
+#       theme_minimal() +
+#       labs(title = paste("Most Networks with Similar Plant Species -", bio),
+#            x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+#       theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 6),
+#             axis.text.y = element_text(size = 6))
+#     
+#     print(p)
+#   } else {
+#     cat("No off-diagonal similarities found in", bio, "\n")
+#   }
+# }
+# 
+
+```
+
+```{r}
+# # For pollinator species - Focus on most similar networks per bioregion
+# 
+# # Loop over each bioregion
+# for (bio in bioregions) {
+#   cat("Processing Bioregion for Pollinators:", bio, "\n")
+#   
+#   sub_data <- species_per_network %>% filter(Bioregion == bio)
+#   nets <- sub_data$Network_id
+#   
+#   # Build similarity matrix
+#   mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
+#                 dimnames = list(nets, nets))
+#   for (i in seq_along(nets)) {
+#     for (j in seq_along(nets)) {
+#       if (i == j) {
+#         mat[i,j] <- NA  # Exclude diagonal
+#       } else {
+#         mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
+#       }
+#     }
+#   }
+#   
+#   # Convert to dataframe, filter out NA (including diagonal), and find top 10 pairs
+#   mat_df <- as.data.frame(as.table(mat)) %>%
+#     filter(!is.na(Freq)) %>%  # Remove NA values (diagonal and any others)
+#     arrange(desc(Freq)) %>%
+#     slice_head(n = 10)  # Top 10 most similar pairs
+#   
+#   # Get unique networks involved in top pairs
+#   if (nrow(mat_df) > 0) {
+#     unique_nets <- unique(c(as.character(mat_df$Var1), as.character(mat_df$Var2)))
+#     
+#     # Subset the original matrix to these networks
+#     sub_mat <- mat[unique_nets, unique_nets]
+#     
+#     # Convert subset matrix to dataframe for ggplot
+#     sub_mat_df <- as.data.frame(as.table(sub_mat))
+#     
+#     # Plot heatmap for the subset
+#     p <- ggplot(sub_mat_df, aes(Var1, Var2, fill = Freq)) +
+#       geom_tile(color = "white", size = 0.01) +
+#       scale_fill_continuous_sequential(palette = "Viridis", na.value = "grey90") +
+#       theme_minimal() +
+#       labs(title = paste("Most Networks with Similar Pollinator Species -", bio),
+#            x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
+#       theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 6),
+#             axis.text.y = element_text(size = 6))
+#     
+#     print(p)
+#   } else {
+#     cat("No off-diagonal similarities found in", bio, "\n")
+#   }
+# }
+```
 ```{r}
 
-# Get the Network with the heights similarity (boreal)
+# Boreal bioregion 
+library(scales)
+
 # Get unique species lists for each network
 boreal_summary <- data %>%
   filter(Bioregion == "Boreal")
@@ -123,9 +242,7 @@ boreal_networks_by_country <- boreal_summary %>%
   count(Country, name = "Num_Networks") %>%
   arrange(desc(Num_Networks))
 
-# Pie chart (if you prefer circular representation)
-
-library(scales)
+# Pie chart 
 boreal_pie <- ggplot(boreal_networks_by_country, aes(x = "", y = Num_Networks, fill = Country)) +
   geom_bar(stat = "identity", width = 1) +
   coord_polar("y", start = 0) +
@@ -144,210 +261,8 @@ boreal_pie <- ggplot(boreal_networks_by_country, aes(x = "", y = Num_Networks, f
 
 print(boreal_pie)
 ```
-```{r}
-# Focusing in Estonia 
-
-# Create a complete Estonia-only dataset with all relevant columns
-estonia_data <- data %>%
-  filter(Country == "Estonia")
-
-
-# Get unique species lists for each network
-species_per_network <- estonia_data %>%
-  group_by(Bioregion, Network_id) %>%
-  summarise(
-    Plants = list(unique(Plant_accepted_name)),
-    Pollinators = list(unique(Pollinator_accepted_name)),
-    .groups = "drop"
-  )
-
-# Function to calculate Jaccard similarity
-jaccard_similarity <- function(set1, set2) {
-  inter <- length(intersect(set1, set2))
-  union <- length(union(set1, set2))
-  if (union == 0) return(NA) else return(inter / union)
-}
-
-# Loop over each bioregion and create heatmap for each one
-bioregions <- unique(species_per_network$Bioregion)
-
-# For plants species 
-
-for (bio in bioregions) {
-  cat("Plotting Bioregion:", bio, "\n")
-  
-  sub_data <- species_per_network %>% filter(Bioregion == bio)
-  nets <- sub_data$Network_id
-  
-  # Build similarity matrix
-  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
-                dimnames = list(nets, nets))
-  for (i in seq_along(nets)) {
-    for (j in seq_along(nets)) {
-      mat[i,j] <- jaccard_similarity(sub_data$Plants[[i]], sub_data$Plants[[j]])
-    }
-  }
-  
-  # Turn into dataframe for ggplot
-  mat_df <- as.data.frame(as.table(mat))
-  
-  # Plot heatmap
-  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
-    geom_tile(color = "white", size = 0.01)  +
-    scale_fill_continuous_sequential(palette = "Viridis",) +
-    theme_minimal() +
-    labs(title = paste("Plant species similarity -", bio),
-         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
-    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
-          axis.text.y = element_text(size = 3))
-  
-  
-  print(p)
-}
-
-#for pollinators 
-
-for (bio in bioregions) {
-  cat("Plotting Bioregion:", bio, "\n")
-  
-  sub_data <- species_per_network %>% filter(Bioregion == bio)
-  nets <- sub_data$Network_id
-  
-  # Build similarity matrix
-  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
-                dimnames = list(nets, nets))
-  for (i in seq_along(nets)) {
-    for (j in seq_along(nets)) {
-      mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
-    }
-  }
-  
-  # Turn into dataframe for ggplot
-  mat_df <- as.data.frame(as.table(mat))
-  
-  # Plot heatmap
-  p <- ggplot(mat_df, aes(Var1, Var2, fill = Freq)) +
-    geom_tile(color = "white", size = 0.01) +
-    scale_fill_continuous_sequential(palette = "Viridis") +
-    theme_minimal() +
-    labs(title = paste("Pollinators species similarity -", bio),
-         x = "Network_id", y = "Network_id", fill = "Jaccard Index") +
-    theme(axis.text.x = element_text(angle = 80, hjust = 1, size = 3),
-          axis.text.y = element_text(size = 3))
-  
-  
-  print(p)
-}
-
-```
-
-```{r}
-# Recreate network summary for Estonia only
-network_summary_estonia <- estonia_data %>%
-  group_by(Study_id, Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
-  summarise(
-    n_plants = n_distinct(Plant_original_name),
-    n_pollinators = n_distinct(Pollinator_original_name),
-    .groups = "drop"
-  )
-
-# Number of unique networks
-n_networks <- network_summary_estonia %>%
-  distinct(Network_id, Study_id) %>%
-  count()
-
-print(n_networks)
-
-ggplot(network_summary_estonia, aes(x = n_plants, y = n_pollinators, color = Study_id)) +
-  geom_point(size = 3, alpha = 0.7) +
-  labs(title = "Network Size in Estonia",
-       x = "Number of Plant Species", 
-       y = "Number of Pollinator Species",
-       color = "Study") +
-  theme_minimal() +
-  scale_color_viridis_d()
-
-
-```
-```{r}
-# After building the similarity matrix, filter for highest similarity pairs (excluding diagonal)
-for (bio in bioregions) {
-  cat("Processing Bioregion:", bio, "\n")
-  
-  sub_data <- species_per_network %>% filter(Bioregion == bio)
-  nets <- sub_data$Network_id
-  
-  # Build similarity matrix
-  mat <- matrix(NA, nrow = length(nets), ncol = length(nets),
-                dimnames = list(nets, nets))
-  for (i in seq_along(nets)) {
-    for (j in seq_along(nets)) {
-      mat[i,j] <- jaccard_similarity(sub_data$Pollinators[[i]], sub_data$Pollinators[[j]])
-    }
-  }
-  
-  # Convert to dataframe and filter out diagonal (i != j)
-  mat_df <- as.data.frame(as.table(mat)) %>%
-    filter(Var1 != Var2) %>%  # Exclude diagonal (self-comparisons)
-    filter(!is.na(Freq)) %>%  # Remove any NA values
-    
-    # Find top N most similar pairs (e.g., top 10)
-    arrange(desc(Freq)) %>%
-    slice_head(n = 10)  # Adjust number as needed
-  
-  # Print the most similar pairs
-  cat("Top similar network pairs in", bio, ":\n")
-  print(mat_df)
-  
-  # Optional: Create a simplified visualization of just the top pairs
-  # (You could make a network graph or simple table plot)
-  if (nrow(mat_df) > 0) {
-    # Simple bar plot of top similarities
-    top_sim_plot <- ggplot(mat_df, aes(x = reorder(paste(Var1, "-", Var2), Freq), y = Freq)) +
-      geom_col(fill = "steelblue", alpha = 0.7) +
-      coord_flip() +
-      labs(title = paste("Top 10 Most Similar Network Pairs -", bio),
-           x = "Network Pair", y = "Jaccard Similarity",
-           subtitle = paste("Showing networks with highest pollinator composition similarity")) +
-      theme_minimal() +
-      theme(axis.text.y = element_text(size = 8))
-    
-    print(top_sim_plot)
-  }
-  
-  # Store results for later use (optional)
-  if (!exists("top_similarities")) {
-    top_similarities <- data.frame()
-  }
-  mat_df$Bioregion <- bio
-  top_similarities <- bind_rows(top_similarities, mat_df)
-}
-
-# After the loop, you can summarize all top similarities across bioregions
-if (exists("top_similarities")) {
-  # Overall top similar pairs across all bioregions
-  overall_top <- top_similarities %>%
-    arrange(desc(Freq)) %>%
-    head(20)
-  
-  print("Overall Top 20 Most Similar Network Pairs:")
-  print(overall_top)
-  
-  # Save to CSV
-  write_csv(top_similarities, "top_similar_network_pairs.csv")
-  
-  # Plot overall top similarities
-  ggplot(overall_top, aes(x = reorder(paste(Var1, "-", Var2), Freq), y = Freq, fill = Bioregion)) +
-    geom_col(alpha = 0.7) +
-    coord_flip() +
-    labs(title = "Top 20 Most Similar Network Pairs Across All Bioregions",
-         x = "Network Pair", y = "Jaccard Similarity") +
-    theme_minimal() +
-    scale_fill_brewer(palette = "Set2") +
-    theme(axis.text.y = element_text(size = 8))
-}
 
 
 
-```
+
 
