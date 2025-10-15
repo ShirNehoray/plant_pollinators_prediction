@@ -1,0 +1,555 @@
+---
+title: "Exploratory Data Analysis for a Chosen Bioregion"
+output: html_document
+date: "2025-10-15"
+---
+
+```{r}
+# libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(tidyr)
+library(purrr)
+library(bipartite)  # For network metrics like connectance
+library(igraph)    # For additional graph analysis
+library(vegan)     # For species accumulation curves
+library(lubridate) # For date handling
+library(geosphere) # For distance calculations
+library(foreach)
+library(doParallel)
+
+# setwd("/Users/shirn/OneDrive/Documents/master/data")
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
+
+# Parameters (easy to tweak)
+bio <- "Continental"  # Focus on this bioregion
+min_total <- 15       # Minimum total species per network
+top_n_pairs <- 50     # Focus on top pairs with highest Jaccard
+top_species_n <- 100  # Number of top species to show in bar plots
+large_net_threshold <- 30  # Threshold for "large" networks in plots
+min_matrix_size <- 3   # Minimum size for network metric calculations
+
+# ====== Read data =========
+interactions <- read_csv("Interaction_data.csv",
+                         col_types = cols(
+                           Network_id = col_character()
+                         ))
+
+# Normalize names for consistency
+normalize_name <- function(x) {
+  x <- trimws(x)
+  x <- gsub("\\s+", " ", x)
+  tolower(x)
+}
+
+jaccard_sets <- function(a, b) {
+  a <- unique(a); b <- unique(b)
+  ia <- length(intersect(a, b))
+  ua <- length(union(a, b))
+  if (ua == 0) NA_real_ else ia / ua
+}
+
+# ============================
+# 1) Filter to Continental bioregion
+# ============================
+dat_bio <- interactions %>%
+  filter(Bioregion == bio)
+
+if (nrow(dat_bio) == 0) {
+  stop(paste("No rows for Bioregion:", bio))
+}
+
+# ====== Species counts per network =====
+network_summary <- dat_bio %>%
+  group_by(Network_id) %>%
+  summarise(
+    n_plants = n_distinct(Plant_accepted_name),
+    n_pollinators = n_distinct(Pollinator_accepted_name),
+    total_species = n_plants + n_pollinators,
+    .groups = "drop"
+  )
+
+nets_keep <- network_summary %>%
+  filter(total_species >= min_total) %>%
+  pull(Network_id)
+
+if (length(nets_keep) == 0) {
+  stop(paste("No networks with total_species >=", min_total, "in", bio))
+}
+
+# ====== Subset data to kept networks ==========
+dat_bio_sub <- dat_bio %>%
+  filter(Network_id %in% nets_keep)
+
+# Normalize species names
+dat_bio_sub <- dat_bio_sub %>%
+  mutate(
+    Plant_accepted_name = normalize_name(Plant_accepted_name),
+    Pollinator_accepted_name = normalize_name(Pollinator_accepted_name)
+  )
+
+# ====== Set the species sets per network ==========
+plant_tags <- paste0("PLANT::", dat_bio_sub$Plant_accepted_name)
+poll_tags <- paste0("POLL::", dat_bio_sub$Pollinator_accepted_name)
+
+idx_by_net <- split(seq_len(nrow(dat_bio_sub)), dat_bio_sub$Network_id)
+
+species_items <- lapply(idx_by_net, function(idx) {
+  unique(c(plant_tags[idx], poll_tags[idx]))
+})
+
+net_ids <- names(species_items)
+n <- length(net_ids)
+
+# ====== Pairwise Jaccard matrix =============
+sim_mat <- matrix(NA_real_, nrow = n, ncol = n, dimnames = list(net_ids, net_ids))
+
+for (i in seq_len(n)) {
+  sim_mat[i, i] <- NA_real_
+  if (i < n) {
+    for (j in (i + 1L):n) {
+      val <- jaccard_sets(species_items[[i]], species_items[[j]])
+      sim_mat[i, j] <- val
+      sim_mat[j, i] <- val
+    }
+  }
+}
+
+# ====== Tidy table of unique pairs, sorted high-to-low ==========
+pairs_list <- list()
+k <- 0L
+for (i in seq_len(n)) {
+  if (i < n) {
+    for (j in (i + 1L):n) {
+      k <- k + 1L
+      pairs_list[[k]] <- data.frame(
+        Net1 = net_ids[i],
+        Net2 = net_ids[j],
+        Jaccard = sim_mat[i, j],
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+}
+sim_df <- do.call(rbind, pairs_list)
+
+if (is.null(sim_df) || nrow(sim_df) == 0 || !("Jaccard" %in% names(sim_df)) || all(is.na(sim_df$Jaccard))) {
+  stop(sprintf("No valid Jaccard similarities for %s (empty or all NA).", bio))
+}
+
+sim_df <- sim_df[!is.na(sim_df$Jaccard), , drop = FALSE]
+ord <- order(sim_df$Jaccard, decreasing = TRUE)
+sim_df <- sim_df[ord, , drop = FALSE]
+
+top_n <- min(top_n_pairs, nrow(sim_df))
+sim_top <- sim_df[seq_len(top_n), , drop = FALSE]
+
+cat(sprintf("\n=== Top %d similar network pairs in %s ===\n", top_n, bio))
+print(sim_top, row.names = FALSE)
+
+# Collect unique networks from top pairs
+unique_nets <- unique(c(sim_top$Net1, sim_top$Net2))
+
+# ====== EDA Pipeline on Top Networks =============
+# Subset data to top networks
+top_data <- dat_bio_sub %>%
+  filter(Network_id %in% unique_nets)
+
+# Add presence for binary matrices
+top_data <- top_data %>%
+  mutate(present = ifelse(Interaction > 0, 1, 0))
+
+# Update network summary for top networks
+network_summary_top <- network_summary %>%
+  filter(Network_id %in% unique_nets) %>%
+  left_join(top_data %>% distinct(Network_id, Country, EuPPollNet_habitat, Latitude, Longitude), by = "Network_id")
+
+
+# ====== Geographic Distribution ======
+ggplot(networks_per_country, aes(x = "", y = n, fill = Country)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Distribution of Top Networks per Country",
+       fill = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid = element_blank())
+
+# ====== Habitats ======
+ggplot(habitat_counts, aes(x = "", y = Num_networks, fill = EuPPollNet_habitat)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Distribution of Top Networks per Habitat",
+       fill = "Habitat") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid = element_blank())
+
+# ====== Species Accumulation Curves ======
+library(dplyr)
+library(tidyr)
+library(tibble)  # Required for column_to_rownames
+
+# Pollinators matrix
+mat_pollinators <- top_data %>%
+  select(Network_id, Pollinator_accepted_name) %>%
+  distinct() %>%
+  mutate(present = 1) %>%
+  pivot_wider(names_from = Pollinator_accepted_name, values_from = present, values_fill = 0) %>%
+  column_to_rownames("Network_id") %>%
+  as.matrix()
+
+spec_curve_poll <- specaccum(mat_pollinators, method = "random")
+
+df_curve_poll <- data.frame(
+  Sites = spec_curve_poll$sites,
+  Richness = spec_curve_poll$richness,
+  SD = spec_curve_poll$sd
+)
+
+ggplot(df_curve_poll, aes(x = Sites, y = Richness)) +
+  geom_line(color = "black", size = 1.2) +
+  geom_ribbon(aes(ymin = Richness - SD, ymax = Richness + SD), fill = "grey", alpha = 0.5) +
+  labs(x = "Networks", y = "Pollinator Species",
+       title = "Pollinator Accumulation Curve in Top Networks") +
+  theme_minimal(base_size = 14)
+
+# Similar for plants
+mat_plants <- top_data %>%
+  select(Network_id, Plant_accepted_name) %>%
+  distinct() %>%
+  mutate(present = 1) %>%
+  pivot_wider(names_from = Plant_accepted_name, values_from = present, values_fill = 0) %>%
+  column_to_rownames("Network_id") %>%
+  as.matrix()
+
+spec_curve_plants <- specaccum(mat_plants, method = "random")
+
+df_curve_plants <- data.frame(
+  Sites = spec_curve_plants$sites,
+  Richness = spec_curve_plants$richness,
+  SD = spec_curve_plants$sd
+)
+
+ggplot(df_curve_plants, aes(x = Sites, y = Richness)) +
+  geom_line(color = "black", size = 1.2) +
+  geom_ribbon(aes(ymin = Richness - SD, ymax = Richness + SD), fill = "grey", alpha = 0.5) +
+  labs(x = "Networks", y = "Plant Species",
+       title = "Plant Accumulation Curve in Top Networks") +
+  theme_minimal(base_size = 14)
+
+# ====== Species Distribution ======
+# Pollinator occurrence
+poll_occurrence <- top_data %>%
+  select(Network_id, Pollinator_accepted_name) %>%
+  distinct() %>%
+  count(Pollinator_accepted_name) %>%
+  mutate(freq = n / n_distinct(top_data$Network_id)) %>%
+  arrange(desc(freq))
+
+ggplot(poll_occurrence, aes(x = n)) +
+  geom_histogram(binwidth = 1, fill = "purple", color = "black") +
+  labs(title = "Distribution of Networks per Pollinator in Top Networks",
+       x = "Number of Networks", y = "Number of Pollinator Species") +
+  theme_minimal()
+
+# Similar for plants
+plant_occurrence <- top_data %>%
+  select(Network_id, Plant_accepted_name) %>%
+  distinct() %>%
+  count(Plant_accepted_name) %>%
+  mutate(freq = n / n_distinct(top_data$Network_id)) %>%
+  arrange(desc(freq))
+
+ggplot(plant_occurrence, aes(x = n)) +
+  geom_histogram(binwidth = 1, fill = "seagreen", color = "black") +
+  labs(title = "Distribution of Networks per Plant in Top Networks",
+       x = "Number of Networks", y = "Number of Plant Species") +
+  theme_minimal()
+
+# Top shared species (from second script)
+plant_freq <- plant_occurrence %>%
+  rename(Num_Networks = n) %>%
+  slice_head(n = top_species_n)
+
+ggplot(plant_freq, aes(x = reorder(Plant_accepted_name, Num_Networks), y = Num_Networks)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(title = "Top Shared Plants in Top Networks",
+       x = "Plant Species", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 5))
+
+poll_freq <- poll_occurrence %>%
+  rename(Num_Networks = n) %>%
+  slice_head(n = top_species_n)
+
+ggplot(poll_freq, aes(x = reorder(Pollinator_accepted_name, Num_Networks), y = Num_Networks)) +
+  geom_bar(stat = "identity", fill = "purple") +
+  coord_flip() +
+  labs(title = "Top Shared Pollinators in Top Networks",
+       x = "Pollinator Species", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 5))
+
+# ====== Network Size Plot ======
+ggplot(network_summary_top, aes(x = n_plants, y = n_pollinators)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  labs(title = "Species per Top Network",
+       x = "Number of Plant Species", y = "Number of Pollinator Species") +
+  theme_minimal()
+
+# ====== Interaction Counts ======
+net_interactions <- top_data %>%
+  group_by(Network_id) %>%
+  summarise(Total_Interactions = sum(Interaction), .groups = "drop")
+
+ggplot(net_interactions, aes(x = reorder(Network_id, Total_Interactions), y = Total_Interactions)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  coord_flip() +
+  labs(title = "Total Interactions per Top Network",
+       x = "Network ID", y = "Total Interactions") +
+  theme_minimal()
+
+# ====== Network Metrics (Parallel Computation) ======
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(bipartite)
+library(igraph)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(geosphere)
+
+# ==============================
+# Helper function to build plant × pollinator matrix
+# ==============================
+build_web <- function(df, plant_col, poll_col) {
+  # xtabs on character columns; works as counts and supports binary presence
+  xtabs(reformulate(c(plant_col, poll_col)), data = df)
+}
+
+# ==============================
+# Safe metric calculations
+# ==============================
+calc_connectance_safe <- function(web) {
+  if (is.null(dim(web)) || any(dim(web) == 0)) return(NA_real_)
+  as.numeric(bipartite::networklevel(web, index = "connectance"))
+}
+
+calc_nestedness_safe <- function(web) {
+  if (is.null(dim(web)) || any(dim(web) == 0)) return(NA_real_)
+  tryCatch(as.numeric(bipartite::networklevel(web, index = "NODF")),  # Using NODF as in your code
+           error = function(e) NA_real_)
+}
+
+calc_modularity_safe <- function(web) {
+  if (is.null(dim(web)) || any(dim(web) == 0)) return(NA_real_)
+  tryCatch({
+    g <- graph_from_incidence_matrix((web > 0) * 1, directed = FALSE)
+    g_poll <- bipartite.projection(g)$proj2
+    if (vcount(g_poll) >= 5 && ecount(g_poll) >= 5) {
+      comm <- cluster_fast_greedy(g_poll)
+      modularity(g_poll, membership(comm))
+    } else {
+      NA_real_
+    }
+  }, error = function(e) NA_real_)
+}
+
+calc_evenness_safe <- function(web) {
+  if (is.null(dim(web)) || any(dim(web) == 0)) return(NA_real_)
+  tryCatch(as.numeric(bipartite::networklevel(web, index = "interaction evenness")),
+           error = function(e) NA_real_)
+}
+
+# ==============================
+# Select columns
+# ==============================
+plant_col <- "Plant_accepted_name"
+poll_col <- "Pollinator_accepted_name"
+
+# ==============================
+# Compute metrics for each network
+# ==============================
+network_metrics <- top_data %>%
+  group_by(Network_id) %>%
+  group_modify(~{
+    web <- build_web(.x, plant_col, poll_col)
+    P <- nrow(web)
+    A <- ncol(web)
+    L <- sum(web > 0)
+    tibble(
+      Plants = P,
+      Pollinators = A,
+      Links = L,
+      Possible_links = P * A,
+      Connectance = calc_connectance_safe(web),
+      Nestedness_NODF = calc_nestedness_safe(web),
+      Modularity = calc_modularity_safe(web),
+      Interaction_Evenness = calc_evenness_safe(web)
+    )
+  }) %>%
+  ungroup() %>%
+  left_join(top_data %>% distinct(Network_id, Country, EuPPollNet_habitat, Latitude, Longitude), by = "Network_id")
+
+cat("\n=== Network Metrics Summary ===\n")
+print(network_metrics)
+
+# ==============================
+# Plotting function for histograms and boxplots
+# ==============================
+plot_metric_hist <- function(df, metric_name, color = "orange") {
+  # Extract and validate metric column
+  df_metric <- df %>%
+    dplyr::select(Network_id, dplyr::all_of(metric_name)) %>%
+    dplyr::rename(Value = dplyr::all_of(metric_name))
+  
+  if (!"Value" %in% names(df_metric) || all(is.na(df_metric$Value))) {
+    message(sprintf("No valid (non-NA) values for metric '%s' — skipping plots.", metric_name))
+    return(invisible(NULL))
+  }
+  
+  df_metric <- dplyr::filter(df_metric, !is.na(Value))
+  if (nrow(df_metric) == 0) {
+    message(sprintf("No rows to plot for metric '%s' after filtering NA — skipping.", metric_name))
+    return(invisible(NULL))
+  }
+  
+  # Compute robust binwidth (Freedman–Diaconis); fallback if degenerate
+  vals <- df_metric$Value
+  bw_fd <- 2 * stats::IQR(vals) / (length(vals)^(1/3))
+  rng <- diff(range(vals))
+  if (!is.finite(bw_fd) || bw_fd <= 0) {
+    bw_fd <- max(rng * 0.1, 0.01)
+  }
+  single_value <- length(unique(vals)) == 1
+  med <- stats::median(vals)
+  
+  # Boxplot
+  p_box <- ggplot2::ggplot(df_metric, ggplot2::aes(x = "", y = Value)) +
+    ggplot2::geom_boxplot(fill = color, alpha = 0.6, outlier.color = "red") +
+    ggplot2::geom_jitter(width = 0.1, alpha = 0.7, size = 2) +
+    ggplot2::labs(
+      title = paste(metric_name, "Distribution Across Networks"),
+      y = metric_name, x = NULL
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      plot.title = ggplot2::element_text(face = "bold")
+    )
+  print(p_box)
+  
+  # Histogram
+  if (single_value) {
+    p_hist <- ggplot2::ggplot(df_metric, ggplot2::aes(x = Value)) +
+      ggplot2::geom_histogram(bins = 1, fill = color, color = "white", alpha = 0.8) +
+      ggplot2::geom_vline(xintercept = med, linetype = "dashed") +
+      ggplot2::labs(
+        title = paste(metric_name, "Histogram (Single Value)"),
+        x = metric_name, y = "Count"
+      ) +
+      ggplot2::theme_minimal()
+  } else {
+    p_hist <- ggplot2::ggplot(df_metric, ggplot2::aes(x = Value)) +
+      ggplot2::geom_histogram(binwidth = bw_fd, boundary = min(vals),
+                              closed = "left", fill = color,
+                              color = "white", alpha = 0.8) +
+      ggplot2::geom_vline(xintercept = med, linetype = "dashed") +
+      ggplot2::labs(
+        title = paste(metric_name, "Histogram"),
+        x = metric_name, y = "Count"
+      ) +
+      ggplot2::theme_minimal()
+  }
+  print(p_hist)
+}
+
+# ==============================
+# Boxplots by country (from your code)
+# ==============================
+plot_metric_boxplot_country <- function(df, metric_name, color = "lightgreen") {
+  df_metric <- df %>%
+    dplyr::select(Network_id, Country, dplyr::all_of(metric_name)) %>%
+    dplyr::rename(Value = dplyr::all_of(metric_name)) %>%
+    dplyr::filter(!is.na(Value), !is.na(Country))
+  
+  if (nrow(df_metric) == 0) {
+    message(sprintf("No valid data for '%s' by Country — skipping.", metric_name))
+    return(invisible(NULL))
+  }
+  
+  p_box_country <- ggplot2::ggplot(df_metric, ggplot2::aes(x = Country, y = Value)) +
+    ggplot2::geom_boxplot(fill = color, alpha = 0.6) +
+    ggplot2::labs(
+      title = paste(metric_name, "Across Countries"),
+      y = metric_name, x = "Country"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  print(p_box_country)
+}
+
+# ==============================
+# Spatial plots
+# ==============================
+plot_metric_spatial <- function(df, metric_name, color_low = "blue", color_high = "red") {
+  europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+  
+  df_metric <- df %>%
+    dplyr::select(Network_id, Latitude, Longitude, dplyr::all_of(metric_name)) %>%
+    dplyr::rename(Value = dplyr::all_of(metric_name)) %>%
+    dplyr::filter(!is.na(Value), !is.na(Latitude), !is.na(Longitude))
+  
+  if (nrow(df_metric) == 0) {
+    message(sprintf("No valid data for '%s' spatial plot — skipping.", metric_name))
+    return(invisible(NULL))
+  }
+  
+  p_spatial <- ggplot2::ggplot(data = europe_map) +
+    ggplot2::geom_sf(fill = "lightgray", color = "white") +
+    ggplot2::geom_point(data = df_metric, 
+                        ggplot2::aes(x = Longitude, y = Latitude, color = Value), 
+                        size = 2, alpha = 0.6) +
+    ggplot2::scale_color_gradient(low = color_low, high = color_high, na.value = "gray", 
+                                  name = metric_name) +
+    ggplot2::coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(
+      title = paste(metric_name, "Across European Networks"),
+      x = "Longitude", y = "Latitude"
+    )
+  print(p_spatial)
+}
+
+# ==============================
+# Generate all plots
+# ==============================
+plot_metric_hist(network_metrics, "Connectance", color = "#E69F00")
+plot_metric_hist(network_metrics, "Nestedness_NODF", color = "#56B4E9")
+plot_metric_hist(network_metrics, "Modularity", color = "#009E73")
+plot_metric_hist(network_metrics, "Interaction_Evenness", color = "#CC79A7")
+
+plot_metric_boxplot_country(network_metrics, "Nestedness_NODF", color = "salmon")
+plot_metric_boxplot_country(network_metrics, "Modularity", color = "lightpink")
+plot_metric_boxplot_country(network_metrics, "Interaction_Evenness", color = "lightblue")
+
+plot_metric_spatial(network_metrics, "Modularity", color_low = "blue", color_high = "red")
+plot_metric_spatial(network_metrics, "Interaction_Evenness", color_low = "blue", color_high = "green")
+
+
+
+```
+

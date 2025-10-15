@@ -6,11 +6,10 @@ date: "2025-09-30"
 
 ```{r}
 
-## ============================
-## Parameters
-## ============================
-
-setwd("/Users/shirn/OneDrive/Documents/master/data")
+## ======== Parameters ===========
+ 
+#setwd("/Users/shirn/OneDrive/Documents/master/data")
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 
 library(dplyr)
 library(readr)
@@ -26,14 +25,12 @@ bioregions <- c("Atlantic", "Boreal", "Continental", "Alpine", "Mediterranean", 
 min_total <- 15     # minimum total species per network
 top_n_pairs <- 100   # how many top pairs to keep 
 
-## ============================
-## Read data 
-## ============================
+## =========== Read data ===========
+
 interactions <- read.csv("Interaction_data.csv", stringsAsFactors = FALSE)
 
-## ============================
-## Utilities (base R)
-## ============================
+## =========Utilities===========
+
 normalize_name <- function(x) {
   # Optional: standardize species names (trim, collapse spaces, lower-case)
   x <- trimws(x)
@@ -48,15 +45,13 @@ jaccard_sets <- function(a, b) {
   if (ua == 0) NA_real_ else ia / ua
 }
 
-## ============================
-## Loop over bioregions
-## ============================
+## ========= Loop for each bioregions===========
+
 for (bio in bioregions) {
   cat(sprintf("\n=== Processing Bioregion: %s ===\n", bio))
 
-  ## ============================
-  ## Column checks
-  ## ============================
+  ## ======== Set Columns ==========
+
   req_cols <- c("Bioregion", "Network_id", "Plant_accepted_name", "Pollinator_accepted_name")
   missing_cols <- setdiff(req_cols, names(interactions))
   if (length(missing_cols) > 0) {
@@ -64,9 +59,8 @@ for (bio in bioregions) {
     next
   }
 
-  ## ============================
-  ## 1) Filter to chosen bioregion
-  ## ============================
+  ## ========= Set the chosen bioregion ========
+
   dat_bio <- interactions[interactions$Bioregion == bio, , drop = FALSE]
 
   if (nrow(dat_bio) == 0) {
@@ -74,10 +68,8 @@ for (bio in bioregions) {
     next
   }
 
-  ## ============================
-  ## 2) Compute species counts per network (to filter small networks)
-  ##    We need distinct counts of plants & pollinators per Network_id
-  ## ============================
+  ## ===== species counts per network (to filter small networks) ====
+  
   # Distinct plants per network
   plants_by_net <- aggregate(Plant_accepted_name ~ Network_id, data = dat_bio,
                              FUN = function(x) length(unique(x)))
@@ -101,9 +93,7 @@ for (bio in bioregions) {
     next
   }
 
-  ## ============================
-  ## 3) Build species sets per network (plants + pollinators together)
-  ## ============================
+  ## ====== Build species sets per network (plants + pollinators together) =====
   # Subset to kept networks
   dat_bio_sub <- dat_bio[dat_bio$Network_id %in% nets_keep, , drop = FALSE]
 
@@ -127,9 +117,7 @@ for (bio in bioregions) {
   net_ids <- names(species_items)
   n <- length(net_ids)
 
-  ## ============================
-  ## 4) Pairwise Jaccard matrix (upper triangle fill)
-  ## ============================
+  ## ======== Pairwise Jaccard matrix =====
   cat(sprintf("Number of networks for %s: %d\n", bio, n)) # Diagnostic
   sim_mat <- matrix(NA_real_, nrow = n, ncol = n, dimnames = list(net_ids, net_ids))
 
@@ -146,11 +134,9 @@ for (bio in bioregions) {
     }
   }
 
-  ## ============================
-  ## 5) Tidy table of unique pairs, sorted high-to-low, with Rank
-  ## ============================
+  ## ===== Tidy table of unique pairs =====
   # Convert matrix to data.frame of pairs
-  # We'll keep only i<j to avoid duplicates
+  # keep only i<j to avoid duplicates
   pairs_list <- list()
   k <- 0L
   for (i in seq_len(n)) {
@@ -172,7 +158,7 @@ for (bio in bioregions) {
     next
   }
 
-  # Remove NA (shouldn't be any except degenerate cases) and sort descending
+  # Remove NA and sort descending
   sim_df <- sim_df[!is.na(sim_df$Jaccard), , drop = FALSE]
   ord <- order(sim_df$Jaccard, decreasing = TRUE)
   sim_df <- sim_df[ord, , drop = FALSE]
@@ -185,15 +171,11 @@ for (bio in bioregions) {
     sim_top <- sim_df
   }
 
-  ## ============================
-  ## 6) Inspect results
-  ## ============================
+  ## ======Results =======
   cat(sprintf("\n=== Top similar network pairs for %s ===\n", bio))
   print(head(sim_top, 20), row.names = FALSE)
 
-  ## ============================
-  ## 6b) Heatmap of Jaccard similarities
-  ## ============================
+  ## ======= Heatmap of Jaccard similarities ======
   # Convert sim_mat to long format for ggplot
   sim_mat_long <- as.data.frame.table(sim_mat, responseName = "Jaccard")
   names(sim_mat_long)[1:2] <- c("Net1", "Net2")
@@ -216,19 +198,15 @@ for (bio in bioregions) {
 
   print(p_heatmap)
 
-  ## If you want the unique networks appearing in the top pairs:
-  unique_nets <- unique(c(sim_top$Net1, sim_top$Net2))
 
-  ## ============================
-  ## 7) Collect per-network coordinates for the networks in top pairs
-  ## ============================
+
+  ## ===== Collect per-network coordinates for the networks in top pairs ========
   # unique networks from the top pairs
   unique_nets <- unique(c(sim_top$Net1, sim_top$Net2))
 
   # subset interactions to the chosen bioregion and those networks
   dat_map <- dat_bio_sub[dat_bio_sub$Network_id %in% unique_nets, , drop = FALSE]
 
-  # basic sanity
   if (!all(c("Latitude","Longitude") %in% names(dat_map))) {
     cat("Latitude/Longitude columns are missing in the dataset.\n")
     next
@@ -251,22 +229,24 @@ for (bio in bioregions) {
     ux[!is.na(ux)][1]
   }
 
-  # aggregate coordinates per network (base R)
+  # get the location for each network 
+  
+ # aggregate coordinates per network 
   lat_by_net <- aggregate(Latitude  ~ Network_id, data = dat_map, FUN = first_unique)
   lon_by_net <- aggregate(Longitude ~ Network_id, data = dat_map, FUN = first_unique)
+
 
   # merge back
   net_locs <- merge(lat_by_net, lon_by_net, by = "Network_id", all = TRUE)
 
-  # (optional) add total species to size points (we already computed 'counts' earlier)
+  # add total species to size points (we already computed 'counts' earlier)
   net_locs <- merge(net_locs, counts[, c("Network_id","total_species")], by = "Network_id", all.x = TRUE)
 
   # keep only networks we actually plot
   net_locs <- net_locs[net_locs$Network_id %in% unique_nets, , drop = FALSE]
 
-  ## ============================
-  ## 8) Determine map extents with a small buffer
-  ## ============================
+  ## ======Determine map extents ========
+
   lat_range <- range(net_locs$Latitude,  na.rm = TRUE)
   lon_range <- range(net_locs$Longitude, na.rm = TRUE)
   lat_buffer <- 1
@@ -274,9 +254,8 @@ for (bio in bioregions) {
   xlim <- c(lon_range[1] - lon_buffer, lon_range[2] + lon_buffer)
   ylim <- c(lat_range[1] - lat_buffer, lat_range[2] + lat_buffer)
 
-  ## ============================
-  ## 9) Base map (Europe) and plot
-  ## ============================
+  ## ====== Base map (Europe) and plot ============
+
   europe <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf", continent = "Europe")
 
   # simple palette for distinct networks
@@ -292,7 +271,6 @@ for (bio in bioregions) {
     ) +
     scale_color_manual(values = cols, guide = "none") +
     scale_size_continuous(range = c(2, 8), name = "Total Species") +
-    # IMPORTANT for newer ggplot2: allow numeric xlim/ylim on lon/lat
     coord_sf(xlim = xlim, ylim = ylim, expand = FALSE, default_crs = NULL) +
     labs(
       title = sprintf("Top similar networks in %s (species-based Jaccard)", bio),
