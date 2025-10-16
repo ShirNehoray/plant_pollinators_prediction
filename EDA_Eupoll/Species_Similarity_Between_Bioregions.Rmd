@@ -120,6 +120,10 @@ for (bio in bioregions) {
 
 
 ```{r}
+bioregions <- c("Atlantic", "Boreal", "Continental", "Alpine", "Mediterranean", "Steppic", "Pannonian")
+min_total <- 15     # minimum total species per network
+top_n_pairs <- 100   # how many top pairs to keep (optional)
+
 
 ## =========Utilities===========
 
@@ -145,7 +149,7 @@ for (bio in bioregions) {
   ## ======== Set Columns ==========
 
   req_cols <- c("Bioregion", "Network_id", "Plant_accepted_name", "Pollinator_accepted_name")
-  missing_cols <- setdiff(req_cols, names(interactions))
+  missing_cols <- setdiff(req_cols, names(data))
   if (length(missing_cols) > 0) {
     cat(paste("Missing required columns:", paste(missing_cols, collapse = ", "), "\n"))
     next
@@ -153,7 +157,7 @@ for (bio in bioregions) {
 
   ## ========= Set the chosen bioregion ========
 
-  dat_bio <- interactions[interactions$Bioregion == bio, , drop = FALSE]
+  dat_bio <- data[data$Bioregion == bio, , drop = FALSE]
 
   if (nrow(dat_bio) == 0) {
     cat(paste("No rows for Bioregion:", bio, "\n"))
@@ -375,6 +379,7 @@ for (bio in bioregions) {
 
   print(p_map)
 }
+
 ```
 
 

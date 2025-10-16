@@ -5,6 +5,16 @@ date: "2025-10-15"
 ---
 
 ```{r}
+# Set a tme
+tme <- theme(
+  axis.text   = element_text(size = 14, color = "black"),
+  axis.title  = element_text(size = 14, face = "bold"),
+  panel.grid  = element_blank(),
+  panel.border= element_rect(color = "black", fill = NA, linewidth = 1),
+  axis.ticks  = element_line(color = "black")
+)
+theme_set(theme_bw())
+
 # libraries
 library(dplyr)
 library(readr)
@@ -21,6 +31,7 @@ library(lubridate) # For date handling
 library(geosphere) # For distance calculations
 library(foreach)
 library(doParallel)
+library(tibble)  # Required for column_to_rownames
 
 # setwd("/Users/shirn/OneDrive/Documents/master/data")
 setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
@@ -170,6 +181,9 @@ network_summary_top <- network_summary %>%
 
 
 # ====== Geographic Distribution ======
+networks_per_country <- network_summary_top %>%
+  count(Country)
+
 ggplot(networks_per_country, aes(x = "", y = n, fill = Country)) +
   geom_bar(stat = "identity", width = 1) +
   coord_polar("y", start = 0) +
@@ -182,6 +196,9 @@ ggplot(networks_per_country, aes(x = "", y = n, fill = Country)) +
         panel.grid = element_blank())
 
 # ====== Habitats ======
+habitat_counts <- network_summary_top %>%
+  count(EuPPollNet_habitat, name = "Num_networks")
+
 ggplot(habitat_counts, aes(x = "", y = Num_networks, fill = EuPPollNet_habitat)) +
   geom_bar(stat = "identity", width = 1) +
   coord_polar("y", start = 0) +
@@ -194,10 +211,6 @@ ggplot(habitat_counts, aes(x = "", y = Num_networks, fill = EuPPollNet_habitat))
         panel.grid = element_blank())
 
 # ====== Species Accumulation Curves ======
-library(dplyr)
-library(tidyr)
-library(tibble)  # Required for column_to_rownames
-
 # Pollinators matrix
 mat_pollinators <- top_data %>%
   select(Network_id, Pollinator_accepted_name) %>%
@@ -303,7 +316,7 @@ ggplot(poll_freq, aes(x = reorder(Pollinator_accepted_name, Num_Networks), y = N
 # ====== Network Size Plot ======
 ggplot(network_summary_top, aes(x = n_plants, y = n_pollinators)) +
   geom_point(alpha = 0.6, color = "darkblue") +
-  labs(title = "Species per Top Network",
+  labs(title = "Total Species per network",
        x = "Number of Plant Species", y = "Number of Pollinator Species") +
   theme_minimal()
 
@@ -321,27 +334,14 @@ ggplot(net_interactions, aes(x = reorder(Network_id, Total_Interactions), y = To
 
 # ====== Network Metrics (Parallel Computation) ======
 
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(bipartite)
-library(igraph)
-library(sf)
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(geosphere)
-
-# ==============================
 # Helper function to build plant × pollinator matrix
-# ==============================
+
 build_web <- function(df, plant_col, poll_col) {
   # xtabs on character columns; works as counts and supports binary presence
   xtabs(reformulate(c(plant_col, poll_col)), data = df)
 }
 
-# ==============================
-# Safe metric calculations
-# ==============================
+
 calc_connectance_safe <- function(web) {
   if (is.null(dim(web)) || any(dim(web) == 0)) return(NA_real_)
   as.numeric(bipartite::networklevel(web, index = "connectance"))
@@ -373,15 +373,11 @@ calc_evenness_safe <- function(web) {
            error = function(e) NA_real_)
 }
 
-# ==============================
-# Select columns
-# ==============================
+
 plant_col <- "Plant_accepted_name"
 poll_col <- "Pollinator_accepted_name"
 
-# ==============================
-# Compute metrics for each network
-# ==============================
+
 network_metrics <- top_data %>%
   group_by(Network_id) %>%
   group_modify(~{
@@ -406,9 +402,7 @@ network_metrics <- top_data %>%
 cat("\n=== Network Metrics Summary ===\n")
 print(network_metrics)
 
-# ==============================
-# Plotting function for histograms and boxplots
-# ==============================
+# ====== Plotting function for histograms and boxplot ================
 plot_metric_hist <- function(df, metric_name, color = "orange") {
   # Extract and validate metric column
   df_metric <- df %>%
