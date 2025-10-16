@@ -5,15 +5,15 @@ date: "2025-10-15"
 ---
 
 ```{r}
-# Set a tme
-tme <- theme(
-  axis.text   = element_text(size = 14, color = "black"),
-  axis.title  = element_text(size = 14, face = "bold"),
-  panel.grid  = element_blank(),
-  panel.border= element_rect(color = "black", fill = NA, linewidth = 1),
-  axis.ticks  = element_line(color = "black")
-)
-theme_set(theme_bw())
+# # Set a tme
+# tme <- theme(
+#   axis.text   = element_text(size = 14, color = "black"),
+#   axis.title  = element_text(size = 14, face = "bold"),
+#   panel.grid  = element_blank(),
+#   panel.border= element_rect(color = "black", fill = NA, linewidth = 1),
+#   axis.ticks  = element_line(color = "black")
+# )
+# theme_set(theme_bw())
 
 # libraries
 library(dplyr)
