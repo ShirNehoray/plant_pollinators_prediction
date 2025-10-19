@@ -1,5 +1,5 @@
 ---
-title: "Exploratory Data Analysis for a Chosen Bioregion"
+title: "Exploratory Data Analysis for Continental Bioregion"
 output: html_document
 date: "2025-10-15"
 ---
@@ -41,8 +41,8 @@ bio <- "Continental"  # Focus on this bioregion
 min_total <- 15       # Minimum total species per network
 top_n_pairs <- 50     # Focus on top pairs with highest Jaccard
 top_species_n <- 100  # Number of top species to show in bar plots
-large_net_threshold <- 30  # Threshold for "large" networks in plots
-min_matrix_size <- 3   # Minimum size for network metric calculations
+# large_net_threshold <- 100  # Threshold for "large" networks in plots
+# min_matrix_size <- 3   # Minimum size for network metric calculations
 
 # ====== Read data =========
 interactions <- read_csv("Interaction_data.csv",
@@ -268,12 +268,21 @@ poll_occurrence <- top_data %>%
   mutate(freq = n / n_distinct(top_data$Network_id)) %>%
   arrange(desc(freq))
 
-ggplot(poll_occurrence, aes(x = n)) +
-  geom_histogram(binwidth = 1, fill = "purple", color = "black") +
-  labs(title = "Distribution of Networks per Pollinator in Top Networks",
-       x = "Number of Networks", y = "Number of Pollinator Species") +
-  theme_minimal()
+# ggplot(poll_occurrence, aes(x = n)) +
+#   geom_histogram(binwidth = 1, fill = "purple", color = "black") +
+#   labs(title = "Distribution of Networks per Pollinator in Top Networks",
+#        x = "Number of Networks", y = "Number of Pollinator Species") +
+#   theme_minimal()
 
+ # ggplot(poll_occurrence, aes(x = freq)) +
+ #     geom_histogram(binwidth = 0.05, fill = "purple", color = "black") +
+ #     labs(
+ #         title = "Distribution of Pollinator Occurrence Frequency",
+ #         x = "Frequency (proportion of networks)",
+ #         y = "Number of Pollinator Species"
+ #     ) +
+ #     theme_minimal()
+ 
 # Similar for plants
 plant_occurrence <- top_data %>%
   select(Network_id, Plant_accepted_name) %>%
@@ -282,12 +291,21 @@ plant_occurrence <- top_data %>%
   mutate(freq = n / n_distinct(top_data$Network_id)) %>%
   arrange(desc(freq))
 
-ggplot(plant_occurrence, aes(x = n)) +
-  geom_histogram(binwidth = 1, fill = "seagreen", color = "black") +
-  labs(title = "Distribution of Networks per Plant in Top Networks",
-       x = "Number of Networks", y = "Number of Plant Species") +
-  theme_minimal()
+# ggplot(plant_occurrence, aes(x = n)) +
+#   geom_histogram(binwidth = 1, fill = "seagreen", color = "black") +
+#   labs(title = "Distribution of Networks per Plant in Top Networks",
+#        x = "Number of Networks", y = "Number of Plant Species") +
+#   theme_minimal()
 
+ # ggplot(plant_occurrence, aes(x = freq)) +
+ #     geom_histogram(binwidth = 0.05, fill = "seagreen", color = "black") +
+ #     labs(
+ #         title = "Distribution of Plants Occurrence Frequency",
+ #         x = "Frequency (proportion of networks)",
+ #         y = "Number of Plants Species"
+ #     ) +
+ #     theme_minimal()
+ 
 # Top shared species (from second script)
 plant_freq <- plant_occurrence %>%
   rename(Num_Networks = n) %>%
@@ -499,32 +517,63 @@ plot_metric_boxplot_country <- function(df, metric_name, color = "lightgreen") {
 # ==============================
 # Spatial plots
 # ==============================
-plot_metric_spatial <- function(df, metric_name, color_low = "blue", color_high = "red") {
-  europe_map <- ne_countries(scale = "medium", continent = "Europe", returnclass = "sf")
+
+
+plot_metric_spatial <- function(df, metric_name) {
+  # Load Europe base map
+  europe_map <- rnaturalearth::ne_countries(
+    scale = "medium",
+    returnclass = "sf",
+    continent = "Europe"
+  )
   
+  # Prepare data for the selected metric
   df_metric <- df %>%
     dplyr::select(Network_id, Latitude, Longitude, dplyr::all_of(metric_name)) %>%
     dplyr::rename(Value = dplyr::all_of(metric_name)) %>%
     dplyr::filter(!is.na(Value), !is.na(Latitude), !is.na(Longitude))
   
+  # Check if there are valid data points
   if (nrow(df_metric) == 0) {
     message(sprintf("No valid data for '%s' spatial plot — skipping.", metric_name))
     return(invisible(NULL))
   }
-  
-  p_spatial <- ggplot2::ggplot(data = europe_map) +
-    ggplot2::geom_sf(fill = "lightgray", color = "white") +
-    ggplot2::geom_point(data = df_metric, 
-                        ggplot2::aes(x = Longitude, y = Latitude, color = Value), 
-                        size = 2, alpha = 0.6) +
-    ggplot2::scale_color_gradient(low = color_low, high = color_high, na.value = "gray", 
-                                  name = metric_name) +
-    ggplot2::coord_sf(xlim = c(-10, 35), ylim = c(35, 72)) +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(
+
+  # # Calculate xlim and ylim based on data with buffer
+  # lat_range <- range(df_metric$Latitude, na.rm = TRUE)
+  # lon_range <- range(df_metric$Longitude, na.rm = TRUE)
+  # xlim <- c(lon_range[10] - lon_buffer, lon_range[20] + lon_buffer)
+  # ylim <- c(lat_range[10] - lat_buffer, lat_range[20] + lat_buffer)
+  # 
+  # Create the spatial plot
+  p_spatial <- ggplot(europe_map) +
+    geom_sf(fill = "beige", color = "black", linewidth = 0.2) +  # Base map background and borders
+    geom_point(
+      data = df_metric,
+      aes(x = Longitude, y = Latitude, color = Value),  # Color points by metric value
+      size = 3, alpha = 0.8
+    ) +
+    coord_sf(
+      xlim = c(-10, 35),
+      ylim = c(35, 72),
+      expand = FALSE,
+      default_crs = NULL
+    ) +
+    labs(
       title = paste(metric_name, "Across European Networks"),
-      x = "Longitude", y = "Latitude"
+      x = "Longitude",
+      y = "Latitude",
+      color = metric_name
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      panel.grid.major = element_line(color = "gray90", linewidth = 0.3),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", hjust = 0.5)
     )
+  
+  # Print the plot
   print(p_spatial)
 }
 
@@ -540,8 +589,7 @@ plot_metric_boxplot_country(network_metrics, "Nestedness_NODF", color = "salmon"
 plot_metric_boxplot_country(network_metrics, "Modularity", color = "lightpink")
 plot_metric_boxplot_country(network_metrics, "Interaction_Evenness", color = "lightblue")
 
-plot_metric_spatial(network_metrics, "Modularity", color_low = "blue", color_high = "red")
-plot_metric_spatial(network_metrics, "Interaction_Evenness", color_low = "blue", color_high = "green")
+plot_metric_spatial(network_metrics, "Country")
 
 
 
