@@ -689,84 +689,84 @@ ggplot(data = europe_map) +
        x = "Longitude", y = "Latitude") +
   theme(legend.position = "right")
 
-# Species-level analysis - degree distribution 
-species_roles <- lapply(network_matrices, function(m) {
-  m_bin <- (m > 0) * 1
-  roles <- specieslevel(m_bin, index = c("degree", "normalized degree"))
-  # Combine plant + pollinator into one dataframe
-  df <- bind_rows(
-    as.data.frame(roles$`higher level`) %>%
-      rownames_to_column("Species") %>%
-      mutate(Level = "Plant"),
-    as.data.frame(roles$`lower level`) %>%
-      rownames_to_column("Species") %>%
-      mutate(Level = "Pollinator")
-  )
-  df
-}) %>%
-  bind_rows(.id = "Network_id")
-
-# # Diagnose: which networks have >1 metadata row?
-# interactions %>%
-#   distinct(Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
-#   count(Network_id, name = "n_meta_rows") %>%
-#   filter(n_meta_rows > 1)
-
-# Majority Country per network
-country_mode <- network_summary %>%
-  count(Network_id, Country, name = "n") %>%
-  group_by(Network_id) %>%
-  slice_max(n, with_ties = FALSE) %>%
-  ungroup() %>%
-  select(Network_id, Country)
-
-# Majority Bioregion per network
-bioregion_mode <- network_summary %>%
-  count(Network_id, Bioregion, name = "n") %>%
-  group_by(Network_id) %>%
-  slice_max(n, with_ties = FALSE) %>%
-  ungroup() %>%
-  select(Network_id, Bioregion)
-
-# Majority Habitat per network
-habitat_mode <- network_summary %>%
-  count(Network_id, EuPPollNet_habitat, name = "n") %>%
-  group_by(Network_id) %>%
-  slice_max(n, with_ties = FALSE) %>%
-  ungroup() %>%
-  select(Network_id, EuPPollNet_habitat)
-
-# Combine into one-row-per-network metadata
-meta_by_net <- country_mode %>%
-  left_join(bioregion_mode, by = "Network_id") %>%
-  left_join(habitat_mode, by = "Network_id")
-
-# Safe join
-species_roles_full <- species_roles %>%
-  left_join(meta_by_net, by = "Network_id")
-
-# Join with metadata
-species_roles_full <- species_roles %>%
-  left_join(interactions %>% 
-              distinct(Network_id, Country, Bioregion, EuPPollNet_habitat),
-            by = "Network_id")
-
-# Explore top high degree
-top_generalists <- species_roles_full %>%
-  arrange(desc(degree)) %>%
-  group_by(Level) %>%
-  slice_head(n = 10)
-
-print(top_generalists)
-# print(top_specialists)
-
-# Plots
-ggplot(species_roles_full, aes(x = degree, fill = Level)) +
-  geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
-  theme_minimal() +
-  labs(title = "Degree distribution of plants and pollinators",
-       x = "Degree", y = "Number of species")
-
+# # Species-level analysis - degree distribution 
+# species_roles <- lapply(network_matrices, function(m) {
+#   m_bin <- (m > 0) * 1
+#   roles <- specieslevel(m_bin, index = c("degree", "normalized degree"))
+#   # Combine plant + pollinator into one dataframe
+#   df <- bind_rows(
+#     as.data.frame(roles$`higher level`) %>%
+#       rownames_to_column("Species") %>%
+#       mutate(Level = "Plant"),
+#     as.data.frame(roles$`lower level`) %>%
+#       rownames_to_column("Species") %>%
+#       mutate(Level = "Pollinator")
+#   )
+#   df
+# }) %>%
+#   bind_rows(.id = "Network_id")
+# 
+# # # Diagnose: which networks have >1 metadata row?
+# # interactions %>%
+# #   distinct(Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+# #   count(Network_id, name = "n_meta_rows") %>%
+# #   filter(n_meta_rows > 1)
+# 
+# # Majority Country per network
+# country_mode <- network_summary %>%
+#   count(Network_id, Country, name = "n") %>%
+#   group_by(Network_id) %>%
+#   slice_max(n, with_ties = FALSE) %>%
+#   ungroup() %>%
+#   select(Network_id, Country)
+# 
+# # Majority Bioregion per network
+# bioregion_mode <- network_summary %>%
+#   count(Network_id, Bioregion, name = "n") %>%
+#   group_by(Network_id) %>%
+#   slice_max(n, with_ties = FALSE) %>%
+#   ungroup() %>%
+#   select(Network_id, Bioregion)
+# 
+# # Majority Habitat per network
+# habitat_mode <- network_summary %>%
+#   count(Network_id, EuPPollNet_habitat, name = "n") %>%
+#   group_by(Network_id) %>%
+#   slice_max(n, with_ties = FALSE) %>%
+#   ungroup() %>%
+#   select(Network_id, EuPPollNet_habitat)
+# 
+# # Combine into one-row-per-network metadata
+# meta_by_net <- country_mode %>%
+#   left_join(bioregion_mode, by = "Network_id") %>%
+#   left_join(habitat_mode, by = "Network_id")
+# 
+# # Safe join
+# species_roles_full <- species_roles %>%
+#   left_join(meta_by_net, by = "Network_id")
+# 
+# # Join with metadata
+# species_roles_full <- species_roles %>%
+#   left_join(interactions %>% 
+#               distinct(Network_id, Country, Bioregion, EuPPollNet_habitat),
+#             by = "Network_id")
+# 
+# # Explore top high degree
+# top_generalists <- species_roles_full %>%
+#   arrange(desc(degree)) %>%
+#   group_by(Level) %>%
+#   slice_head(n = 10)
+# 
+# print(top_generalists)
+# # print(top_specialists)
+# 
+# # Plots
+# ggplot(species_roles_full, aes(x = degree, fill = Level)) +
+#   geom_histogram(bins = 30, alpha = 0.6, position = "identity") +
+#   theme_minimal() +
+#   labs(title = "Degree distribution of plants and pollinators",
+#        x = "Degree", y = "Number of species")
+# 
 
 
 ```
