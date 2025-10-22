@@ -1,4 +1,4 @@
-setwd("/Users/shirnehoray/Downloads")
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 setwd("/Users/shirn/Documents/Master/data")
 
 
@@ -72,16 +72,9 @@ print(names(interaction_matrices))
 # # Using head() to keep the output manageable
 # print(head(interaction_matrices$UNIPD01_C))
 
-# --- Step 2: Identify and Remove Networks with the Invasive Plant ---
+# --- Step 2: Identify and Remove Networks with the rare species ---
 
-# First, ensure the matrix list from the previous step exists.
-# If not, run the code from the previous response to create 'interaction_matrices'.
-
-# 1. Identify which network names need to be removed.
-#    The conditions are:
-#    a) The network name (the key in the list) starts with "UNIPD01".
-#    b) The plant "Buddleja_davidii" exists as a row name in that network's matrix.
-
+# remove the networks with the rare species 
 networks_to_remove <- names(interaction_matrices)[
   # Condition (a): Check which names start with "UNIPD01"
   grepl("^UNIPD01", names(interaction_matrices)) &
