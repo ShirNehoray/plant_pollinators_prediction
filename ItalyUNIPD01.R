@@ -6,6 +6,7 @@ library(ggplot2)
 library(dplyr)
 library(readr)
 library(rnaturalearth)
+library(tidyverse)
 
 ##  Settings
 bioregions   <- c("Continental")
@@ -258,7 +259,7 @@ for (bio in bioregions) {
     diag(sim_sub) <- 1
     
     #Order rows/columns alphabetically (by Network_id)
-    ord <- order(net_labels)
+    ord <- order(net_ids_map) # <--- CORRECT: Sort by the existing object
     sim_sub    <- sim_sub[ord, ord]
     net_labels <- net_ids_map[ord]
     
@@ -297,13 +298,13 @@ for (bio in bioregions) {
     
     ## 10-g) Show & save
     print(p_heat)
-    ggsave(
-      filename = sprintf("heatmap_species_similarity_%s.png", bio),
-      plot     = p_heat,
-      width    = max(8, 0.6 * n_map),
-      height   = max(6, 0.5 * n_map),
-      dpi      = 300
-    )
+    # ggsave(
+    #   filename = sprintf("heatmap_species_similarity_%s.png", bio),
+    #   plot     = p_heat,
+    #   width    = max(8, 0.6 * n_map),
+    #   height   = max(6, 0.5 * n_map),
+    #   dpi      = 300
+    # )
     # cat(sprintf("Heat-map saved as 'heatmap_species_similarity_%s.png'\n", bio))
   }
 }
