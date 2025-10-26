@@ -5,6 +5,9 @@ library(ggplot2)
 library(tidyr)
 library(readr)
 
+setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
+
+
 # Load the data from the CSV file
 data <- read_csv("Interaction_data.csv")
 
@@ -135,8 +138,8 @@ plot_heatmap <- function(similarity_matrix, title) {
 }
 
 # Generate and print the two heatmaps
-plant_heatmap <- plot_heatmap(plant_similarity_matrix, "Heatmap of Plant Species Similarity Between Bioregions")
-pollinator_heatmap <- plot_heatmap(pollinator_similarity_matrix, "Heatmap of Apidae (Interaction > 0) Pollinator Species Similarity")
+plant_heatmap <- plot_heatmap(plant_similarity_matrix, " Plant Species Similarity Between Bioregions")
+pollinator_heatmap <- plot_heatmap(pollinator_similarity_matrix, "Apidae Pollinator Species Similarity")
 
 # Print the plots to the console/viewer
 print(plant_heatmap)

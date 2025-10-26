@@ -22,6 +22,7 @@ required_cols <- c(
   "Interaction", "Pollinator_accepted_name", "EuPPollNet_habitat"
 )
 missing_cols <- setdiff(required_cols, names(data))
+
 if (length(missing_cols) > 0) {
   stop(paste("Error: The following required columns are missing:", paste(missing_cols, collapse = ", ")))
 }
