@@ -4,8 +4,6 @@ output: html_document
 date: "2025-09-21"
 ---
 ```{r}
-
-# Load needed packages
 library(dplyr)
 library(ggplot2)
 library(colorspace)
@@ -14,12 +12,81 @@ library(tidyr)
 library(readr)
 library(vegan)
 
-# setwd("/Users/shirn/OneDrive/Documents/master/data")
-setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
+setwd("/Users/shirn/Documents/Master/data")
+#setwd("/Users/shirnehoray/EDA/plant_pollinators_prediction/EDA_Eupoll")
 
 
 # Read the data
 data <- read.csv("Interaction_data.csv", encoding = "latin1")
+
+networks_per_bioregion <- data %>%
+  filter(!is.na(Bioregion) & Bioregion != "") %>% # Clean up any missing or empty bioregion names
+  select(Bioregion, Network_id) %>%
+  distinct() %>%  # Get unique pairs of Bioregion/Network_id
+  group_by(Bioregion) %>%
+  summarise(network_count = n()) %>% # Count the number of unique networks for each bioregion
+  ungroup() %>%
+  mutate(Bioregion_sorted = reorder(Bioregion, network_count))
+
+# Plot
+ggplot(networks_per_bioregion, aes(x = Bioregion_sorted, y = network_count)) +
+  geom_col(aes(fill = Bioregion_sorted), show.legend = FALSE) + 
+  coord_flip() + 
+  labs(
+    title = "Number of Plant-Pollinator Networks per Bioregion",
+    x = "Bioregion", 
+    y = "Number of Networks" 
+  ) +
+  geom_text(aes(label = network_count), hjust = -0.2, size = 3) +
+  theme_minimal(base_size = 12) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"), 
+    plot.margin = margin(10, 30, 10, 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()  
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) 
+
+
+```
+```{r}
+# Plotting for network with Apidea interactions 
+
+networks_with_apidae <- data %>%
+  filter(Pollinator_family == "Apidae") %>%
+  select(Bioregion, Network_id) %>%
+  distinct()
+
+# Networks per bioregions
+apidae_networks_per_bioregion <- networks_with_apidae %>%
+  filter(!is.na(Bioregion) & Bioregion != "") %>% # Clean up any missing or empty bioregion names
+  group_by(Bioregion) %>%
+  summarise(network_count_apidae = n()) %>% # Count the number of unique networks
+  ungroup() %>%
+  mutate(Bioregion_sorted_apidae = reorder(Bioregion, network_count_apidae))
+
+# Plot
+ggplot(apidae_networks_per_bioregion, aes(x = Bioregion_sorted_apidae, y = network_count_apidae)) +
+  geom_col(aes(fill = Bioregion_sorted_apidae), show.legend = FALSE) + # Create the bars
+  coord_flip() + 
+  labs(
+    title = "Number of Networks with Apidae Pollinators Interaction per Bioregion",
+    x = "Bioregion",
+    y = "Number of Networks (with Apidae Interactions)"
+  ) +
+  geom_text(aes(label = network_count_apidae), hjust = -0.2, size = 3) +
+  theme_minimal(base_size = 12) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 11, face = "bold"), 
+    plot.margin = margin(10, 30, 10, 10), 
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()  
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) 
+
+```
+
+```{r}
 
 # Get unique species lists for each network
 species_per_network <- data %>%

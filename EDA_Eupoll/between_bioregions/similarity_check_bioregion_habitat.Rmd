@@ -1,0 +1,476 @@
+---
+title: "Jaccard between bioregions and habitat"
+output: html_document
+date: "2025-10-23"
+---
+```{r}
+
+setwd("/Users/shirn/Documents/Master/data")
+
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+# Read the interaction data
+data <- read.csv("Interaction_data.csv", encoding = "latin1")
+
+# Group the data by the 'Pollinator_family' column
+pollinator_counts_by_family <- data %>%
+  group_by(Pollinator_family) %>%
+  summarise(
+    Unique_Species_Count = n_distinct(Pollinator_accepted_name),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(Unique_Species_Count))
+
+# Get the top 10 families from the sorted data
+top_10_families <- pollinator_counts_by_family %>%
+  slice_head(n = 10)
+
+# Create a bar chart to visualize the counts for the top 10
+family_histogram <- ggplot(top_10_families, 
+                           # Use reorder to sort the families from most to least species
+                           aes(x = reorder(Pollinator_family, -Unique_Species_Count), 
+                               y = Unique_Species_Count)) +
+  geom_col(fill = "steelblue") + # Create the bar chart
+  # Add text labels for the counts on top of each bar
+  geom_text(aes(label = Unique_Species_Count), vjust = -0.5, size = 3.5) +
+  labs(
+    title = "Top 10 Pollinator Families",
+    x = "Pollinator Family",
+    y = "Number of Unique Species"
+  ) +
+  theme_minimal() +
+  theme(
+    # Rotate the x-axis labels to prevent them from overlapping
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    # Remove all grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+
+# Print the histogram to the viewer
+print(family_histogram)
+
+
+```
+```{r}
+# Count unique networks per pollinator family
+
+networks_per_family <- data %>%
+  filter(!is.na(Pollinator_family) & Pollinator_family != "") %>% 
+  select(Pollinator_family, Network_id) %>%
+  distinct() %>%  
+  group_by(Pollinator_family) %>%
+  summarise(network_count = n()) %>% 
+  ungroup() %>%
+  arrange(desc(network_count)) %>% # Sort to find the top families
+  slice_head(n = 10) %>% # Keep only the top 10
+  mutate(Family_sorted = reorder(Pollinator_family, network_count))
+
+# Create the Bar Plot for Top 10 Families
+ggplot(networks_per_family, aes(x = Family_sorted, y = network_count)) +
+  geom_col(aes(fill = Family_sorted), show.legend = FALSE) + 
+  coord_flip() + 
+  labs(
+    title = "Top 10 Pollinator Families by Number of Networks",
+    x = "Pollinator Family",
+    y = "Number of Networks"
+  ) +
+  geom_text(aes(label = network_count), hjust = -0.2, size = 3) +
+  theme_minimal(base_size = 12) + # Use a clean theme
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"), 
+    plot.margin = margin(10, 30, 10, 10), 
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()  
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) 
+
+
+
+```
+
+```{r}
+#for Apidae
+
+# Aggregate all plant species from the original dataset by Bioregion
+plant_species_per_bioregion <- data %>%
+  group_by(Bioregion) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    .groups = "drop"
+  )
+
+# Filter for Apidae and aggregate pollinator species by Bioregion
+filtered_pollinator_species_per_bioregion <- data %>%
+  filter(Pollinator_family == "Apidae", Interaction > 0) %>% #to insure that there is an interaction
+  group_by(Bioregion) %>%
+  summarise(
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Create a data frame with all unique bioregions to ensure matrices are comparable
+all_bioregions_df <- data %>%
+  select(Bioregion) %>%
+  distinct()
+
+# Join the plant and pollinator data (per bioregion)
+species_per_bioregion <- all_bioregions_df %>%
+  left_join(plant_species_per_bioregion, by = "Bioregion") %>%
+  left_join(filtered_pollinator_species_per_bioregion, by = "Bioregion")
+
+# Replace NA/NULL list entries with empty lists for the Jaccard calculation.
+for (i in 1:nrow(species_per_bioregion)) {
+  if (is.null(species_per_bioregion$Pollinators[[i]])) {
+    species_per_bioregion$Pollinators[[i]] <- list()
+  }
+}
+
+
+# Aggregate all plant species from the original dataset by Habitat
+plant_species_per_habitat <- data %>%
+  group_by(EuPPollNet_habitat) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    .groups = "drop"
+  )
+
+# Filter for Apidae with interaction > 0 and aggregate pollinator species by Habitat
+filtered_pollinator_species_per_habitat <- data %>%
+  filter(Pollinator_family == "Apidae", Interaction > 0) %>%
+  group_by(EuPPollNet_habitat) %>%
+  summarise(
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Create a data frame with all unique habitats to ensure matrices are comparable
+all_habitats_df <- data %>%
+  select(EuPPollNet_habitat) %>%
+  distinct()
+
+# Join the plant and pollinator data (per habitat)
+species_per_habitat <- all_habitats_df %>%
+  left_join(plant_species_per_habitat, by = "EuPPollNet_habitat") %>%
+  left_join(filtered_pollinator_species_per_habitat, by = "EuPPollNet_habitat")
+
+# Replace NA/NULL list entries with empty lists for the Jaccard calculation.
+for (i in 1:nrow(species_per_habitat)) {
+  if (is.null(species_per_habitat$Pollinators[[i]])) {
+    species_per_habitat$Pollinators[[i]] <- list()
+  }
+  if (is.null(species_per_habitat$Plants[[i]])) { # Also add check for plants, just in case
+    species_per_habitat$Plants[[i]] <- list()
+  }
+}
+
+
+
+# Define the Jaccard similarity function (reusable)
+jaccard_similarity <- function(set1, set2) {
+  # Find the number of species common to both sets
+  intersection_size <- length(intersect(set1, set2))
+  # Find the total number of unique species across both sets
+  union_size <- length(union(set1, set2))
+  
+  # Avoid division by zero if both sets are empty
+  if (union_size == 0) {
+    return(NA)
+  } else {
+    return(intersection_size / union_size)
+  }
+}
+
+# Make a function to create a similarity matrix
+create_similarity_matrix <- function(species_data, species_type, grouping_col) {
+  num_groups <- nrow(species_data)
+  group_names <- species_data[[grouping_col]]
+  
+  # Create an empty matrix to store the similarity scores
+  sim_matrix <- matrix(NA,
+                       nrow = num_groups,
+                       ncol = num_groups,
+                       dimnames = list(group_names, group_names))
+  
+  # Loop through each pair of groups to calculate similarity
+  for (i in 1:num_groups) {
+    for (j in 1:num_groups) {
+      # Get the species lists for the two groups
+      species_set1 <- unlist(species_data[[species_type]][i])
+      species_set2 <- unlist(species_data[[species_type]][j])
+      
+      # Calculate and store the Jaccard similarity score
+      sim_matrix[i, j] <- jaccard_similarity(species_set1, species_set2)
+    }
+  }
+  return(sim_matrix)
+}
+
+# --- Create matrices for BIOREGION comparison ---
+plant_similarity_matrix_bioregion <- create_similarity_matrix(species_per_bioregion, "Plants", "Bioregion")
+pollinator_similarity_matrix_bioregion <- create_similarity_matrix(species_per_bioregion, "Pollinators", "Bioregion")
+
+# --- Create matrices for HABITAT comparison ---
+plant_similarity_matrix_habitat <- create_similarity_matrix(species_per_habitat, "Plants", "EuPPollNet_habitat")
+pollinator_similarity_matrix_habitat <- create_similarity_matrix(species_per_habitat, "Pollinators", "EuPPollNet_habitat")
+
+
+
+# Make a function to plot a heatmap
+plot_heatmap <- function(similarity_matrix, title, x_label, y_label) {
+  
+  # Convert the matrix to a long-format data frame, which is required for ggplot2
+  long_format_data <- as.data.frame(as.table(similarity_matrix))
+  # Use generic names for the columns
+  names(long_format_data) <- c("Group1", "Group2", "Similarity")
+  
+  # Create the heatmap plot
+  heatmap_plot <- ggplot(long_format_data, aes(x = Group1, y = Group2, fill = Similarity)) +
+    geom_tile(color = "white") + # Add white lines between tiles for better separation
+    # Add text labels for the Jaccard index values, rounded to 2 decimal places
+    geom_text(aes(label = round(Similarity, 2)), color = "black", size = 2) +
+    # Use the 'viridis' color palette as requested
+    scale_fill_viridis_c(option = "viridis", name = "Jaccard\nSimilarity") +
+    labs(
+      title = title,
+      x = x_label,
+      y = y_label
+    ) +
+    theme_minimal() + # Use a clean, minimal theme
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10), # Rotate x-axis labels
+      axis.text.y = element_text(size = 10),
+      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"), # Center the title
+      panel.grid.major = element_blank(), # Remove grid lines
+      panel.grid.minor = element_blank()
+    ) +
+    coord_fixed() # Ensure the tiles are square
+  
+  return(heatmap_plot)
+}
+
+# --- Generate and print the BIOREGION heatmaps ---
+plant_heatmap_bioregion <- plot_heatmap(
+  plant_similarity_matrix_bioregion, 
+  " Plant Species Similarity Between Bioregions",
+  "Bioregion", "Bioregion"
+)
+pollinator_heatmap_bioregion <- plot_heatmap(
+  pollinator_similarity_matrix_bioregion, 
+  " Apidae Pollinator Species Similarity Between Bioregions",
+  "Bioregion", "Bioregion"
+)
+
+# --- Generate and print the new HABITAT heatmaps ---
+plant_heatmap_habitat <- plot_heatmap(
+  plant_similarity_matrix_habitat,
+  "Heatmap of Plant Species Similarity Between Habitats",
+  "Habitat", "Habitat"
+)
+pollinator_heatmap_habitat <- plot_heatmap(
+  pollinator_similarity_matrix_habitat,
+  "Apidae Pollinator Species Similarity Between Habitats",
+  "Habitat", "Habitat"
+)
+
+# Print all plots 
+print(plant_heatmap_bioregion)
+print(pollinator_heatmap_bioregion)
+print(plant_heatmap_habitat)
+print(pollinator_heatmap_habitat)
+
+
+```
+
+```{r}
+#for Syrphidae
+
+# Aggregate all plant species from the original dataset by Bioregion
+plant_species_per_bioregion <- data %>%
+  group_by(Bioregion) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    .groups = "drop"
+  )
+
+# Filter for Syrphidae with interaction > 0 and aggregate pollinator species by Bioregion
+filtered_pollinator_species_per_bioregion <- data %>%
+  filter(Pollinator_family == "Syrphidae", Interaction > 0) %>%
+  group_by(Bioregion) %>%
+  summarise(
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Create a data frame with all unique bioregions to ensure matrices are comparable
+all_bioregions_df <- data %>%
+  select(Bioregion) %>%
+  distinct()
+
+# Join the plant and pollinator data (per bioregion)
+species_per_bioregion <- all_bioregions_df %>%
+  left_join(plant_species_per_bioregion, by = "Bioregion") %>%
+  left_join(filtered_pollinator_species_per_bioregion, by = "Bioregion")
+
+# Replace NA/NULL list entries with empty lists for the Jaccard calculation
+for (i in 1:nrow(species_per_bioregion)) {
+  if (is.null(species_per_bioregion$Pollinators[[i]])) {
+    species_per_bioregion$Pollinators[[i]] <- list()
+  }
+}
+
+# Aggregate all plant species from the original dataset by Habitat
+plant_species_per_habitat <- data %>%
+  group_by(EuPPollNet_habitat) %>%
+  summarise(
+    Plants = list(unique(Plant_accepted_name)),
+    .groups = "drop"
+  )
+
+# Filter for Syrphidae with interaction > 0 and aggregate pollinator species by Habitat
+filtered_pollinator_species_per_habitat <- data %>%
+  filter(Pollinator_family == "Syrphidae", Interaction > 0) %>%
+  group_by(EuPPollNet_habitat) %>%
+  summarise(
+    Pollinators = list(unique(Pollinator_accepted_name)),
+    .groups = "drop"
+  )
+
+# Create a data frame with all unique habitats to ensure matrices are comparable
+all_habitats_df <- data %>%
+  select(EuPPollNet_habitat) %>%
+  distinct()
+
+# Join the plant and pollinator data (per habitat)
+species_per_habitat <- all_habitats_df %>%
+  left_join(plant_species_per_habitat, by = "EuPPollNet_habitat") %>%
+  left_join(filtered_pollinator_species_per_habitat, by = "EuPPollNet_habitat")
+
+# Replace NA/NULL list entries with empty lists for the Jaccard calculation.
+for (i in 1:nrow(species_per_habitat)) {
+  if (is.null(species_per_habitat$Pollinators[[i]])) {
+    species_per_habitat$Pollinators[[i]] <- list()
+  }
+  if (is.null(species_per_habitat$Plants[[i]])) { # Also add check for plants, just in case
+    species_per_habitat$Plants[[i]] <- list()
+  }
+}
+
+# Define the Jaccard similarity function (reusable)
+jaccard_similarity <- function(set1, set2) {
+  # Find the number of species common to both sets
+  intersection_size <- length(intersect(set1, set2))
+  # Find the total number of unique species across both sets
+  union_size <- length(union(set1, set2))
+  
+  # Avoid division by zero if both sets are empty
+  if (union_size == 0) {
+    return(NA)
+  } else {
+    return(intersection_size / union_size)
+  }
+}
+
+# Make a more general function to create a similarity matrix
+create_similarity_matrix <- function(species_data, species_type, grouping_col) {
+  num_groups <- nrow(species_data)
+  group_names <- species_data[[grouping_col]]
+  
+  # Create an empty matrix to store the similarity scores
+  sim_matrix <- matrix(NA,
+                       nrow = num_groups,
+                       ncol = num_groups,
+                       dimnames = list(group_names, group_names))
+  
+  # Loop through each pair of groups to calculate similarity
+  for (i in 1:num_groups) {
+    for (j in 1:num_groups) {
+      # Get the species lists for the two groups
+      species_set1 <- unlist(species_data[[species_type]][i])
+      species_set2 <- unlist(species_data[[species_type]][j])
+      
+      # Calculate and store the Jaccard similarity score
+      sim_matrix[i, j] <- jaccard_similarity(species_set1, species_set2)
+    }
+  }
+  return(sim_matrix)
+}
+
+# --- Create matrices for BIOREGION comparison ---
+plant_similarity_matrix_bioregion <- create_similarity_matrix(species_per_bioregion, "Plants", "Bioregion")
+pollinator_similarity_matrix_bioregion <- create_similarity_matrix(species_per_bioregion, "Pollinators", "Bioregion")
+
+# --- Create matrices for HABITAT comparison ---
+plant_similarity_matrix_habitat <- create_similarity_matrix(species_per_habitat, "Plants", "EuPPollNet_habitat")
+pollinator_similarity_matrix_habitat <- create_similarity_matrix(species_per_habitat, "Pollinators", "EuPPollNet_habitat")
+
+
+# Make a function to plot a heatmap
+plot_heatmap <- function(similarity_matrix, title, x_label, y_label) {
+  
+  # Convert the matrix to a long-format data frame, which is required for ggplot2
+  long_format_data <- as.data.frame(as.table(similarity_matrix))
+  # Use generic names for the columns
+  names(long_format_data) <- c("Group1", "Group2", "Similarity")
+  
+  # Create the heatmap plot
+  heatmap_plot <- ggplot(long_format_data, aes(x = Group1, y = Group2, fill = Similarity)) +
+    geom_tile(color = "white") + # Add white lines between tiles for better separation
+    # Add text labels for the Jaccard index values, rounded to 2 decimal places
+    geom_text(aes(label = round(Similarity, 2)), color = "black", size = 2) +
+    # Use the 'viridis' color palette as requested
+    scale_fill_viridis_c(option = "viridis", name = "Jaccard\nSimilarity") +
+    labs(
+      title = title,
+      x = x_label,
+      y = y_label
+    ) +
+    theme_minimal() + # Use a clean, minimal theme
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10), # Rotate x-axis labels
+      axis.text.y = element_text(size = 10),
+      plot.title = element_text(hjust = 0.5, size = 11, face = "bold"), # Center the title
+      panel.grid.major = element_blank(), # Remove grid lines
+      panel.grid.minor = element_blank()
+    ) +
+    coord_fixed() # Ensure the tiles are square
+  
+  return(heatmap_plot)
+}
+
+# --- Generate and print the BIOREGION heatmaps ---
+plant_heatmap_bioregion <- plot_heatmap(
+  plant_similarity_matrix_bioregion, 
+  "Plant Species Similarity Between Bioregions",
+  "Bioregion", "Bioregion"
+)
+pollinator_heatmap_bioregion <- plot_heatmap(
+  pollinator_similarity_matrix_bioregion, 
+  " Syrphidae Pollinator Species Similarity Between Bioregions",
+  "Bioregion", "Bioregion"
+)
+
+# --- Generate and print the new HABITAT heatmaps ---
+plant_heatmap_habitat <- plot_heatmap(
+  plant_similarity_matrix_habitat,
+  " Plant Species Similarity Between Habitats",
+  "Habitat", "Habitat"
+)
+pollinator_heatmap_habitat <- plot_heatmap(
+  pollinator_similarity_matrix_habitat,
+  "Syrphidae Pollinator Species Similarity Between Habitats",
+  "Habitat", "Habitat"
+)
+
+# Print all plots 
+print(plant_heatmap_bioregion)
+print(pollinator_heatmap_bioregion)
+print(plant_heatmap_habitat)
+print(pollinator_heatmap_habitat)
+
+```
+
