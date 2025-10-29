@@ -1,3 +1,11 @@
+---
+title: "jaccard between bioregions metawebs"
+output: html_document
+date: "2025-10-29"
+---
+```{r}
+setwd("/Users/shirnehoray/EDA")
+
 # --- Load required packages ---
 library(dplyr)
 library(tidyr)
@@ -141,4 +149,7 @@ ggplot(bray_df, aes(x = Bioregion1, y = Bioregion2, fill = BrayCurtis)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         plot.title = element_text(hjust = 0.5))
 
+
+
+```
 
