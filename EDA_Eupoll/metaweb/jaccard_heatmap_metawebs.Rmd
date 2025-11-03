@@ -6,23 +6,27 @@ date: "2025-10-29"
 ```{r}
 setwd("/Users/shirnehoray/EDA")
 
-# --- Load required packages ---
+# --- Step 1: Load required packages ---
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-library(vegan)  # for Bray–Curtis
+library(vegan)   # for Bray–Curtis distance
 
-# --- Step 1: Read the dataset ---
+# --- Step 2: Read the dataset ---
 data <- read.csv("Interaction_data.csv")
 
-# --- Step 2: Define bioregions and initialize a list ---
+# --- Step 3: Filter only Apidae pollinators ---
+data_apidae <- data %>%
+  filter(Pollinator_family == "Apidae")
+
+# --- Step 4: Define bioregions and initialize a list ---
 bioregions <- c("Alpine", "Atlantic", "Boreal", "Continental")
 metaweb_list <- list()
 
-# --- Step 3: Loop through each bioregion to create metawebs ---
+# --- Step 5: Loop through each bioregion to create metawebs (Apidae only) ---
 for (bio in bioregions) {
   # Filter rows for this bioregion
-  df_bio <- data %>%
+  df_bio <- data_apidae %>%
     filter(Bioregion == bio) %>%
     select(Plant_accepted_name, Pollinator_accepted_name, Interaction)
   
@@ -47,13 +51,12 @@ for (bio in bioregions) {
   )
 }
 
-# --- Step 4: Prepare a list of unique interaction pairs for each bioregion ---
+# --- Step 6: Prepare a list of unique interaction pairs for each bioregion ---
 interaction_sets <- list()
 
 for (bio in names(metaweb_list)) {
   df <- metaweb_list[[bio]]$dataframe
   
-  # Convert matrix back to a long format to get pairs
   df_long <- df %>%
     pivot_longer(-Plant_accepted_name, names_to = "Pollinator_accepted_name", values_to = "value") %>%
     filter(value > 0) %>%
@@ -62,7 +65,7 @@ for (bio in names(metaweb_list)) {
   interaction_sets[[bio]] <- unique(df_long$pair)
 }
 
-# --- Step 5: Calculate pairwise Jaccard similarities (binary) ---
+# --- Step 7: Calculate pairwise Jaccard similarities (binary) ---
 bioregion_names <- names(interaction_sets)
 n <- length(bioregion_names)
 jaccard_matrix <- matrix(NA, nrow = n, ncol = n,
@@ -84,72 +87,64 @@ for (i in 1:n) {
   }
 }
 
-# --- Step 6: Convert Jaccard matrix for plotting ---
+# --- Step 8: Convert Jaccard matrix for plotting ---
 jaccard_df <- as.data.frame(jaccard_matrix) %>%
   mutate(Bioregion1 = rownames(.)) %>%
   pivot_longer(-Bioregion1, names_to = "Bioregion2", values_to = "Jaccard")
 
-# --- Step 7: Plot Jaccard heatmap ---
+# --- Step 9: Plot Jaccard heatmap ---
 ggplot(jaccard_df, aes(x = Bioregion1, y = Bioregion2, fill = Jaccard)) +
   geom_tile(color = "white") +
   geom_text(aes(label = round(Jaccard, 2)), color = "red", size = 4) +
   scale_fill_viridis_c(option = "viridis", name = "Jaccard\nSimilarity", limits = c(0, 1)) +
   theme_minimal() +
-  labs(title = "Jaccard Similarity of Plant-Pollinator Metawebs",
+  labs(title = "Jaccard Similarity of Plant-Apidae Metawebs",
        x = "Bioregion", y = "Bioregion") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         plot.title = element_text(hjust = 0.5))
 
-# --- Step 8: Calculate pairwise Bray–Curtis similarities (quantitative) ---
-# Create a combined matrix where rows = bioregions, columns = unique interactions
+# --- Step 10: Calculate pairwise Bray–Curtis similarities (quantitative) ---
 interaction_union <- unique(unlist(interaction_sets))
-# Clean column names to ensure valid matrix names
 interaction_union <- make.names(interaction_union, unique = TRUE)
 
 quant_matrix <- matrix(0, nrow = n, ncol = length(interaction_union),
                        dimnames = list(bioregion_names, interaction_union))
 
-# Fill with total interaction counts safely
 for (bio in bioregion_names) {
   df <- metaweb_list[[bio]]$dataframe
   df_long <- df %>%
     pivot_longer(-Plant_accepted_name, names_to = "Pollinator_accepted_name", values_to = "value") %>%
     mutate(pair = paste(Plant_accepted_name, Pollinator_accepted_name, sep = "_"))
   
-  # Clean pair names the same way
   df_long$pair <- make.names(df_long$pair, unique = TRUE)
   
   pair_sum <- df_long %>%
     group_by(pair) %>%
     summarise(total = sum(value), .groups = "drop")
   
-  # Match only pairs that exist in the matrix
   valid_pairs <- intersect(pair_sum$pair, colnames(quant_matrix))
   quant_matrix[bio, valid_pairs] <- pair_sum$total[match(valid_pairs, pair_sum$pair)]
 }
 
-
 # Compute Bray–Curtis dissimilarity and convert to similarity
 bray_dissim <- vegdist(quant_matrix, method = "bray")
-bray_sim <- 1- as.matrix(bray_dissim)
+bray_sim <- 1 - as.matrix(bray_dissim)
 
-# --- Step 9: Prepare Bray–Curtis data for plotting ---
+# --- Step 11: Prepare Bray–Curtis data for plotting ---
 bray_df <- as.data.frame(bray_sim) %>%
   mutate(Bioregion1 = rownames(.)) %>%
   pivot_longer(-Bioregion1, names_to = "Bioregion2", values_to = "BrayCurtis")
 
-# --- Step 10: Plot Bray–Curtis similarity heatmap ---
+# --- Step 12: Plot Bray–Curtis similarity heatmap ---
 ggplot(bray_df, aes(x = Bioregion1, y = Bioregion2, fill = BrayCurtis)) +
   geom_tile(color = "white") +
   geom_text(aes(label = round(BrayCurtis, 2)), color = "red", size = 4) +
   scale_fill_viridis_c(option = "viridis", name = "Bray–Curtis\nSimilarity", limits = c(0, 1)) +
   theme_minimal() +
-  labs(title = "Bray–Curtis Similarity of Plant-Pollinator Metawebs (Quantitative)",
+  labs(title = "Bray–Curtis Similarity of Plant-Apidae Metawebs (Quantitative)",
        x = "Bioregion", y = "Bioregion") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         plot.title = element_text(hjust = 0.5))
-
-
 
 ```
 
