@@ -1,0 +1,362 @@
+---
+title: "Graphs For EupPollNet Analysis"
+output: html_document
+date: "2025-11-10"
+---
+```{r}
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+tme <-  theme(axis.text = element_text(size = 10, color = "black"),
+              axis.title = element_text(size = 12, face = "bold"),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank())
+theme_set(theme_bw())
+
+# Read the interaction data
+data <- read.csv("Interaction_data.csv", encoding = "latin1", stringsAsFactors = FALSE)
+#data <- Interaction_data
+
+# Number of networks per each study ----- 
+# Count unique networks per study 
+network_counts <- data %>%
+  dplyr::distinct(Study_id, Network_id) %>%
+  dplyr::group_by(Study_id) %>%
+  dplyr::summarise(unique_networks = dplyr::n()) %>%
+  dplyr::arrange(desc(unique_networks))
+
+
+# Create a bar plot
+ggplot(network_counts, aes(x = reorder(Study_id, -unique_networks), y = unique_networks)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  theme_minimal() +
+  labs(title = "Number of Networks per Study",
+       x = "Study ID",
+       y = "Number of Networks") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        panel.grid.major = element_blank(), # remove grid lines
+        panel.grid.minor = element_blank()
+        
+        
+  )+
+  tme
+
+
+# Remove the large network -  13_Karise
+no_large_network <- network_counts %>% filter(Study_id != "13_Karise")
+
+ggplot(no_large_network, aes(x = reorder(Study_id, -unique_networks), y = unique_networks)) +
+  geom_bar(stat = "identity", fill = "#335588") +
+  theme_minimal() +
+  labs(title = "Number of Networks per Study (excluding 13_Karise)",
+       x = "Study ID",
+       y = "Number of Networks") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+  ) +
+  tme
+
+
+# Create the distribution data
+network_distribution <- network_counts %>%
+  dplyr::group_by(unique_networks) %>%
+  dplyr::summarise(study_count = dplyr::n()) %>%
+  dplyr::arrange(unique_networks)
+
+
+# #  Plot the Bar Chart
+# ggplot(network_distribution, aes(x = study_count, y = factor(unique_networks))) +
+#   geom_col(fill = "steelblue") + # geom_col is the same as geom_bar(stat="identity")
+#   theme_minimal() +
+#   labs(title = "Distribution of Studies by Network Count",
+#        x = "Number of Studies",           # Swapped label
+#        y = "Number Networks") +  # Swapped label
+#   theme(plot.title = element_text(hjust = 0.5),
+#         panel.grid.major = element_blank(), 
+#         panel.grid.minor = element_blank()  
+#   )+
+#   tme
+
+
+
+# Distribution for no_large_network
+network_distribution_no_large_network<- no_large_network %>%
+  dplyr::group_by(unique_networks) %>%
+  dplyr::summarise(study_count = dplyr::n()) %>%
+  dplyr::arrange(unique_networks)
+
+# Plot distribution 
+ggplot(network_distribution_no_large_network, aes(x = study_count, y = unique_networks)) +
+  geom_line(color = "steelblue", linewidth = 1) + # 'linewidth' is the modern argument for size
+  geom_point(color = "steelblue", size = 3) +
+  theme_minimal() +
+  labs(title = "Distribution of Number of Networks per Study",
+       x = "Number of Studies",
+       y = "Number of Networks") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    # panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()  
+  ) +
+  scale_x_continuous(breaks = seq(0, max(network_distribution$unique_networks, na.rm = TRUE), by = 1)) +
+  tme
+
+
+# Number of interactions per study -------
+# Total interactions per study
+net_sum <- data %>%
+  group_by(Study_id, Network_id) %>%
+  summarize(total_interactions = sum(Interaction, na.rm = TRUE))
+
+#Plot
+ggplot(net_sum, aes(x = Study_id, y = total_interactions)) +
+  geom_boxplot() +
+  labs(
+    title = "Networks Interactions per Study",
+    x = "Study ID",
+    y = "Total Interactions per Network"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  tme
+
+#Filter Studies with more then 5000 interactions 
+net_sum_filter <- data %>%
+  group_by(Study_id, Network_id) %>%
+  summarize(total_interactions = sum(Interaction, na.rm = TRUE)) %>%
+  ungroup() %>%
+  filter(total_interactions < 5000)
+
+#Plot
+ggplot(net_sum_filter, aes(x = Study_id, y = total_interactions)) +
+  geom_boxplot() +
+  labs(
+    title = "Networks with less then 5000 Interactions per Study",
+    x = "Study ID",
+    y = "Total Interactions per Network"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  tme
+
+
+
+
+
+# Classify if temporal or Spatial -------
+metadata <- read_csv("metadata.csv", show_col_types = FALSE)
+
+classification_col <- grep("clasification|classification",
+                           names(metadata), ignore.case = TRUE, value = TRUE)[1]
+
+if (is.na(classification_col)) {
+  stop("Classification column not found!")
+}
+cat("Classification column detected:", classification_col, "\n")
+
+metadata <-  metadata %>%
+  mutate(!!sym(classification_col) := str_trim(!!sym(classification_col))) %>%
+  mutate(!!sym(classification_col) := case_when(
+    str_detect(!!sym(classification_col),
+               "spatial.*temporal|temporal.*spatial") ~ "spatial and temporal",
+    !!sym(classification_col) == "spatial" ~ "spatial",
+    !!sym(classification_col) == "temporal" ~ "temporal",
+    TRUE ~ !!sym(classification_col)
+  ))
+
+# Count unique Study_id per classification
+counts <- metadata %>%
+  distinct(Study_id, !!sym(classification_col)) %>%
+  count(!!sym(classification_col), name = "n_studies") %>%
+  rename(classification = !!sym(classification_col)) %>%
+  mutate(classification = factor(classification,
+                                 levels = c("spatial", "temporal", "spatial and temporal")))
+
+print(counts)
+
+# Bar plot
+ggplot(counts,
+       aes(x = classification, y = n_studies, fill = classification)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = n_studies), vjust = -0.5,
+            size = 3, fontface = "bold") +
+  scale_fill_manual(values = c("spatial" = "lightblue3",
+                               "temporal" = "lightblue3",
+                               "spatial and temporal" = "lightblue3")) +
+  labs(title = "Number of studies by spatial/temporal classification",
+       x = "",
+       y = "Number of studies") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        legend.position = "none")+
+  tme
+
+# Studies per bio regions ------ 
+# Summarize network-level information
+network_summary <- data %>%
+  group_by(Study_id,Network_id, Country, Bioregion, EuPPollNet_habitat) %>%
+  summarise(
+    n_plants = n_distinct(Plant_original_name),
+    n_pollinators = n_distinct(Pollinator_original_name),
+    .groups = "drop"
+  )
+
+# Count networks per country
+networks_per_country <- network_summary %>%
+  select(Network_id, Country) %>%
+  distinct() %>%
+  count(Country)
+
+# Get unique network country bio-region combinations
+country_bioregion <- network_summary %>%
+  select(Network_id, Country, Bioregion) %>%
+  distinct()
+
+# Count networks per country and attach bior-egion
+networks_per_country <- country_bioregion %>%
+  distinct(Network_id, Country, Bioregion) %>%
+  count(Country, Bioregion)
+
+# Plot
+ggplot(networks_per_country, aes(x = reorder(Country, -n), y = n, fill = Bioregion)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Number of Networks per Country (Colored by Bioregion)",
+       x = "Country", y = "Number of Networks") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  tme
+
+# Sampling methods -----
+
+#  Clean Sampling_method: trim spaces, handle NA
+metadata <- metadata %>%
+  mutate(Sampling_method = str_trim(Sampling_method)) %>%
+  mutate(Sampling_method = if_else(Sampling_method == "" | is.na(Sampling_method), 
+                                   "Unspecified", Sampling_method))
+
+# Assign one Sampling_method per Study_id
+study_sampling <- metadata %>%
+  group_by(Study_id) %>%
+  summarise(
+    Sampling_method = first(na.omit(Sampling_method)),
+    .groups = "drop"
+  ) %>%
+  mutate(Sampling_method = case_when(
+    Sampling_method == "Transect/Random walk" ~ "Transect / Random walk",
+    TRUE ~ Sampling_method
+  ))
+
+
+#  Count the unique Study_id per Sampling_method
+sampling_counts <- study_sampling %>%
+  count(Sampling_method, name = "n_studies") %>%
+  arrange(desc(n_studies)) %>%
+  mutate(Sampling_method = factor(Sampling_method,
+                                  levels = Sampling_method))  # keep order
+
+# Plot
+ggplot(sampling_counts, 
+       aes(x = Sampling_method, y = n_studies)) +
+  geom_col(fill = "slateblue4", width = 0.7, colour = "white") +  
+  # geom_text(aes(label = n_studies), 
+  #           vjust = -0.5, size = 3, fontface = "bold", color = "black") +
+  labs(
+    title = " Types of Sampling Methods",
+    x = "",
+    y = "Number of Studies"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    plot.title = element_text(hjust = 0.5, color = "black")
+  )+
+  tme
+
+# Size of network -----
+
+#  Calculate pollinator, plant, and total species for each network
+network_sizes <- data %>%
+  dplyr::group_by(Study_id, Network_id) %>%
+  dplyr::summarise(
+    n_pollinators = dplyr::n_distinct(Pollinator_accepted_name), 
+    n_plants = dplyr::n_distinct(Plant_accepted_name),           
+    .groups = 'drop' 
+  ) %>%
+  # Calculate total species for the network
+  dplyr::mutate(
+    total_species = n_pollinators + n_plants
+  )
+
+# Apply a threshold: Keep only networks with 20 or more species
+large_networks <- network_sizes %>%
+  dplyr::filter(total_species >= 20) %>%
+  dplyr::arrange(desc(total_species))
+
+
+# Plotting a box plot to show the min, max, median and quartiles for each study
+ggplot(large_networks, aes(x = reorder(Study_id, -total_species, FUN = median), y = total_species)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "orange") +
+  theme_minimal() +
+  labs(
+    title = " Network Sizes (>= 20 species) for each Study",
+    x = "Study ID",
+    y = "Total Species (Pollinators + Plants)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(), # Remove grid lines
+    panel.grid.minor = element_blank()
+  ) +
+  tme
+
+
+# 1. Boxplot for PLANT species count per study
+ggplot(large_networks, aes(x = reorder(Study_id, -n_plants, FUN = median), y = n_plants)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "darkgreen") +
+  theme_minimal() +
+  labs(
+    title = "Plant Species per Network (>= 20 total species) by Study",
+    x = "Study ID",
+    y = "Number of Plant Species"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  tme
+
+# 2. Boxplot for POLLINATOR species count per study
+ggplot(large_networks, aes(x = reorder(Study_id, -n_pollinators, FUN = median), y = n_pollinators)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "purple") +
+  theme_minimal() +
+  labs(
+    title = "Pollinator Species per Network (>= 20 total species) by Study",
+    x = "Study ID",
+    y = "Number of Pollinator Species"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  tme
+
+
+```
+
