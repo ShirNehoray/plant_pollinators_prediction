@@ -1,0 +1,43 @@
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(vegan) 
+
+connectance_results <- data_filtered %>%
+  select(Study_id, Network_id, Plant_accepted_name, Pollinator_accepted_name) %>%
+  distinct() %>%
+  group_by(Study_id, Network_id) %>%
+  summarise(
+    n_interactions = n(),
+    n_plants = n_distinct(Plant_accepted_name),
+    n_pollinators = n_distinct(Pollinator_accepted_name),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Connectance = n_interactions / (n_plants * n_pollinators)
+  ) %>%
+  select(Study_id, Network_id, Connectance)
+
+ggplot(connectance_results, 
+       aes(x = reorder(Study_id, -Connectance, FUN = median),  
+           y = Connectance)) +
+  geom_boxplot(fill = "white", color = "black") +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "lightcyan3") + 
+  theme_minimal() +
+  labs(
+    title = "Network Connectance for each Study",
+    x = "Study ID",
+    y = "Connectance"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  tme +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.1)
+  )
