@@ -1,0 +1,122 @@
+metadata <- read.csv("metadata.csv")
+# -------------------------------------------------
+# 1. Load packages
+# -------------------------------------------------
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+
+
+
+classification_col <- grep("clasification|classification", names(metadata), ignore.case = TRUE, value = TRUE)[1]
+
+metadata <- metadata %>%
+  mutate(!!sym(classification_col) := str_trim(!!sym(classification_col))) %>%
+  mutate(!!sym(classification_col) := case_when(
+    str_detect(!!sym(classification_col), "spatial.*temporal|temporal.*spatial") ~ "spatial and temporal",
+    !!sym(classification_col) == "spatial" ~ "spatial",
+    !!sym(classification_col) == "temporal" ~ "temporal",
+    TRUE ~ !!sym(classification_col)
+  ))
+
+
+study_summary <- metadata %>%
+  group_by(Study_id) %>%
+  summarise(
+    total_networks = sum(number_of_neworks, na.rm = TRUE),  
+    classification = case_when(
+      any(!!sym(classification_col) == "spatial and temporal") ~ "spatial and temporal",
+      any(!!sym(classification_col) == "temporal") ~ "temporal",
+      any(!!sym(classification_col) == "spatial") ~ "spatial",
+      TRUE ~ "unknown"
+    ),
+    .groups = "drop"
+  ) %>%
+  filter(total_networks > 0) %>%
+  arrange(desc(total_networks)) %>%
+  mutate(Study_id = factor(Study_id, levels = Study_id))  # keep sorted order
+
+ggplot(study_summary, aes(x = Study_id, y = total_networks, fill = classification)) +
+  geom_col(width = 0.9) +
+  geom_text(aes(label = total_networks), 
+            vjust = -0.5, size = 2, color = "black") +
+  scale_fill_manual(
+    values = c(
+      "spatial" = "plum4",
+      "temporal" = "lightblue3",
+      "spatial and temporal" = "lightcoral"
+    ),
+    name = "Classification"
+  ) +
+  labs(
+    title = " Number of Networks per Study",
+    x = "Study_id",
+    y = "Number of Networks"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8.5),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  ) +
+  tme
+
+
+
+
+no_large_network <- metadata %>%
+  group_by(Study_id) %>%
+  summarise(
+    total_networks = sum(number_of_neworks, na.rm = TRUE),
+    classification = case_when(
+      any(!!sym(classification_col) == "spatial and temporal") ~ "spatial and temporal",
+      any(!!sym(classification_col) == "temporal") ~ "temporal",
+      any(!!sym(classification_col) == "spatial") ~ "spatial",
+      TRUE ~ "unknown"
+    ),
+    .groups = "drop"
+  ) %>%
+  filter(total_networks > 0) %>%
+  filter(Study_id != "13_Karise") %>%          # <--- מסיר את 13_Karise
+  arrange(desc(total_networks)) %>%
+  mutate(Study_id = factor(Study_id, levels = Study_id))
+
+
+ggplot(no_large_network, aes(x = Study_id, y = total_networks, fill = classification)) +
+  geom_col(width = 0.9) +
+  geom_text(aes(label = total_networks), 
+            vjust = -0.5, size = 2, color = "black") +
+  scale_fill_manual(
+    values = c(
+      "spatial" = "plum4",
+      "temporal" = "lightblue3",
+      "spatial and temporal" = "lightcoral"
+    ),
+    name = "Classification"
+  ) +
+  labs(
+    title = " Number of Networks per Study",
+    x = "Study_id",
+    y = "Number of Networks"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8.5),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  ) +
+  tme
+
+
+
+
+
+

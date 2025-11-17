@@ -1,0 +1,61 @@
+# T-tests and Graphing with "Long Format" Data
+
+library(ggplot2)
+library(dplyr)
+
+
+# קריאת הנתונים 
+records_data <- read.csv("Tibia_records.csv")
+
+
+#  ניתוח  - בוגרים (Adults) ----
+
+# טבלה המכילה רק את הבוגרים (Stage == "AD")
+adult_data <- subset(records_data, Stage == "AD")
+
+# שלב א': בדיקת נורמליות (Shapiro-Wilk Test)
+print("--- Shapiro-Wilk Normality Test (Adults) ---")
+shapiro.test(subset(adult_data, Species == "A")$Tibia.L) # Test Adults A
+shapiro.test(subset(adult_data, Species == "B")$Tibia.L) # Test Adults B
+
+# שלב ב': בדיקת שוויון שונויות (F-test)
+print("--- F-test for Equal Variances (Adults) ---")
+var_test_adults <- var.test(Tibia.L ~ Species, data = adult_data)
+print(var_test_adults)
+# תוצאה: p = 0.4805 (לא מובהק, > 0.05). לכן נניח שוויון שונויות.
+
+# שלב ג': מבחן t
+#  var.equal = TRUE
+t_test_adults <- t.test(Tibia.L ~ Species, data = adult_data, var.equal = TRUE)
+print("--- T-Test for Adults ---")
+print(t_test_adults)
+
+# ניתוח מחדש - צעירים (Juveniles) ----
+
+#  טבלה  המכילה רק את הצעירים (Stage == "J")
+juvenile_data <- subset(records_data, Stage == "J")
+
+# שלב א': בדיקת נורמליות (Shapiro-Wilk Test)
+print("--- Shapiro-Wilk Normality Test (Juveniles) ---")
+shapiro.test(subset(juvenile_data, Species == "A")$Tibia.L) # Test Juveniles A
+shapiro.test(subset(juvenile_data, Species == "B")$Tibia.L) # Test Juveniles B
+
+# שלב ב': בדיקת שוויון שונויות (F-test)
+print("--- F-test for Equal Variances (Juveniles) ---")
+var_test_juveniles <- var.test(Tibia.L ~ Species, data = juvenile_data)
+print(var_test_juveniles)
+
+# שלב ג': מבחן t
+#  var.equal = FALSE
+t_test_juveniles <- t.test(Tibia.L ~ Species, data = juvenile_data, var.equal = FALSE)
+print("--- T-Test for Juveniles ---")
+print(t_test_juveniles)
+
+
+#  יצירת הגרף -----
+ggplot(records_data, aes(x = Stage, y = Tibia.L, fill = Species)) +
+  geom_boxplot() +
+  labs(title = "Tibia length by species and developmental stage",
+       x = "Developmental stage", y = "Tibia length (mm)",
+       fill = "Species") +
+  theme_minimal()
