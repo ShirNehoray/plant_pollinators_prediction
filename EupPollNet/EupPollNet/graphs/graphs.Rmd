@@ -20,94 +20,164 @@ theme_set(theme_bw())
 
 # Read the interaction data
 data <- read.csv("Interaction_data.csv", encoding = "latin1", stringsAsFactors = FALSE)
-#data <- Interaction_data
+metadata <- read_csv("metadata.csv", show_col_types = FALSE)
+
 
 # Number of networks per each study ----- 
-# Count unique networks per study 
-network_counts <- data %>%
-  dplyr::distinct(Study_id, Network_id) %>%
-  dplyr::group_by(Study_id) %>%
-  dplyr::summarise(unique_networks = dplyr::n()) %>%
-  dplyr::arrange(desc(unique_networks))
+# classify the studies 
+classification_col <- grep("clasification|classification", names(metadata), ignore.case = TRUE, value = TRUE)[1]
+
+metadata <- metadata %>%
+  mutate(!!sym(classification_col) := str_trim(!!sym(classification_col))) %>%
+  mutate(!!sym(classification_col) := case_when(
+    str_detect(!!sym(classification_col), "spatial.*temporal|temporal.*spatial") ~ "spatial and temporal",
+    !!sym(classification_col) == "spatial" ~ "spatial",
+    !!sym(classification_col) == "temporal" ~ "temporal",
+    TRUE ~ !!sym(classification_col)
+  ))
 
 
-# Create a bar plot
-ggplot(network_counts, aes(x = reorder(Study_id, -unique_networks), y = unique_networks)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  theme_minimal() +
-  labs(title = "Number of Networks per Study",
-       x = "Study ID",
-       y = "Number of Networks") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
-  theme(plot.title = element_text(hjust = 0.5), 
-        panel.grid.major = element_blank(), # remove grid lines
-        panel.grid.minor = element_blank()
-        
-        
-  )+
-  tme
+# summary the classify the studies 
+study_summary <- metadata %>%
+  group_by(Study_id) %>%
+  summarise(
+    total_networks = sum(number_of_neworks, na.rm = TRUE),  # <-- סיכום כל הרשתות
+    classification = case_when(
+      any(!!sym(classification_col) == "spatial and temporal") ~ "spatial and temporal",
+      any(!!sym(classification_col) == "temporal") ~ "temporal",
+      any(!!sym(classification_col) == "spatial") ~ "spatial",
+      TRUE ~ "unknown"
+    ),
+    .groups = "drop"
+  ) %>%
+  filter(total_networks > 0) %>%
+  arrange(desc(total_networks)) %>%
+  mutate(Study_id = factor(Study_id, levels = Study_id))  # keep sorted order
 
-
-# Remove the large network -  13_Karise
-no_large_network <- network_counts %>% filter(Study_id != "13_Karise")
-
-ggplot(no_large_network, aes(x = reorder(Study_id, -unique_networks), y = unique_networks)) +
-  geom_bar(stat = "identity", fill = "#335588") +
-  theme_minimal() +
-  labs(title = "Number of Networks per Study (excluding 13_Karise)",
-       x = "Study ID",
-       y = "Number of Networks") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-        plot.title = element_text(hjust = 0.5),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()
+# graphing the number of network per study and classify the study
+ggplot(study_summary, aes(x = Study_id, y = total_networks, fill = classification)) +
+  geom_col(width = 0.9) +
+  geom_text(aes(label = total_networks), 
+            vjust = -0.5, size = 2, color = "black") +
+  scale_fill_manual(
+    values = c(
+      "spatial" = "plum4",
+      "temporal" = "lightblue3",
+      "spatial and temporal" = "lightcoral"
+    ),
+    name = "Classification"
   ) +
-  tme
-
-
-# Create the distribution data
-network_distribution <- network_counts %>%
-  dplyr::group_by(unique_networks) %>%
-  dplyr::summarise(study_count = dplyr::n()) %>%
-  dplyr::arrange(unique_networks)
-
-
-# #  Plot the Bar Chart
-# ggplot(network_distribution, aes(x = study_count, y = factor(unique_networks))) +
-#   geom_col(fill = "steelblue") + # geom_col is the same as geom_bar(stat="identity")
-#   theme_minimal() +
-#   labs(title = "Distribution of Studies by Network Count",
-#        x = "Number of Studies",           # Swapped label
-#        y = "Number Networks") +  # Swapped label
-#   theme(plot.title = element_text(hjust = 0.5),
-#         panel.grid.major = element_blank(), 
-#         panel.grid.minor = element_blank()  
-#   )+
-#   tme
-
-
-
-# Distribution for no_large_network
-network_distribution_no_large_network<- no_large_network %>%
-  dplyr::group_by(unique_networks) %>%
-  dplyr::summarise(study_count = dplyr::n()) %>%
-  dplyr::arrange(unique_networks)
-
-# Plot distribution 
-ggplot(network_distribution_no_large_network, aes(x = study_count, y = unique_networks)) +
-  geom_line(color = "steelblue", linewidth = 1) + # 'linewidth' is the modern argument for size
-  geom_point(color = "steelblue", size = 3) +
-  theme_minimal() +
-  labs(title = "Distribution of Number of Networks per Study",
-       x = "Number of Studies",
-       y = "Number of Networks") +
+  labs(
+    title = " Number of Networks per Study",
+    x = "Study_id",
+    y = "Number of Networks"
+  ) +
+  theme_minimal(base_size = 12) +
   theme(
-    plot.title = element_text(hjust = 0.5),
-    # panel.grid.major = element_blank(), 
-    panel.grid.minor = element_blank()  
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8.5),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank()
   ) +
-  scale_x_continuous(breaks = seq(0, max(network_distribution$unique_networks, na.rm = TRUE), by = 1)) +
   tme
+
+
+#remove larg network for graphing 
+no_large_network <- metadata %>%
+  group_by(Study_id) %>%
+  summarise(
+    total_networks = sum(number_of_neworks, na.rm = TRUE),
+    classification = case_when(
+      any(!!sym(classification_col) == "spatial and temporal") ~ "spatial and temporal",
+      any(!!sym(classification_col) == "temporal") ~ "temporal",
+      any(!!sym(classification_col) == "spatial") ~ "spatial",
+      TRUE ~ "unknown"
+    ),
+    .groups = "drop"
+  ) %>%
+  filter(total_networks > 0) %>%
+  filter(Study_id != "13_Karise") %>%          # <--- מסיר את 13_Karise
+  arrange(desc(total_networks)) %>%
+  mutate(Study_id = factor(Study_id, levels = Study_id))
+
+# graph without the large networks 
+ggplot(no_large_network, aes(x = Study_id, y = total_networks, fill = classification)) +
+  geom_col(width = 0.9) +
+  geom_text(aes(label = total_networks), 
+            vjust = -0.5, size = 2, color = "black") +
+  scale_fill_manual(
+    values = c(
+      "spatial" = "plum4",
+      "temporal" = "lightblue3",
+      "spatial and temporal" = "lightcoral"
+    ),
+    name = "Classification"
+  ) +
+  labs(
+    title = " Number of Networks per Study",
+    x = "Study_id",
+    y = "Number of Networks"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8.5),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  ) +
+  tme
+
+
+# Classify if temporal or Spatial -------
+# classification_col <- grep("clasification|classification",
+#                            names(metadata), ignore.case = TRUE, value = TRUE)[1]
+# 
+# if (is.na(classification_col)) {
+#   stop("Classification column not found!")
+# }
+# cat("Classification column detected:", classification_col, "\n")
+# 
+# metadata <-  metadata %>%
+#   mutate(!!sym(classification_col) := str_trim(!!sym(classification_col))) %>%
+#   mutate(!!sym(classification_col) := case_when(
+#     str_detect(!!sym(classification_col),
+#                "spatial.*temporal|temporal.*spatial") ~ "spatial and temporal",
+#     !!sym(classification_col) == "spatial" ~ "spatial",
+#     !!sym(classification_col) == "temporal" ~ "temporal",
+#     TRUE ~ !!sym(classification_col)
+#   ))
+
+# Count unique Study_id per classification
+counts <- metadata %>%
+  distinct(Study_id, !!sym(classification_col)) %>%
+  count(!!sym(classification_col), name = "n_studies") %>%
+  rename(classification = !!sym(classification_col)) %>%
+  mutate(classification = factor(classification,
+                                 levels = c("spatial", "temporal", "spatial and temporal")))
+
+
+# Bar plot
+ggplot(counts,
+       aes(x = classification, y = n_studies, fill = classification)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = n_studies), vjust = -0.5,
+            size = 3, fontface = "bold") +
+  scale_fill_manual(values = c("spatial" = "lightblue3",
+                               "temporal" = "lightblue3",
+                               "spatial and temporal" = "lightblue3")) +
+  labs(title = "Number of studies by spatial/temporal classification",
+       x = "",
+       y = "Number of studies") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        legend.position = "none")+
+  tme
+
+
 
 
 # Number of interactions per study -------
@@ -151,53 +221,6 @@ ggplot(net_sum_filter, aes(x = Study_id, y = total_interactions)) +
 
 
 
-# Classify if temporal or Spatial -------
-metadata <- read_csv("metadata.csv", show_col_types = FALSE)
-
-classification_col <- grep("clasification|classification",
-                           names(metadata), ignore.case = TRUE, value = TRUE)[1]
-
-if (is.na(classification_col)) {
-  stop("Classification column not found!")
-}
-cat("Classification column detected:", classification_col, "\n")
-
-metadata <-  metadata %>%
-  mutate(!!sym(classification_col) := str_trim(!!sym(classification_col))) %>%
-  mutate(!!sym(classification_col) := case_when(
-    str_detect(!!sym(classification_col),
-               "spatial.*temporal|temporal.*spatial") ~ "spatial and temporal",
-    !!sym(classification_col) == "spatial" ~ "spatial",
-    !!sym(classification_col) == "temporal" ~ "temporal",
-    TRUE ~ !!sym(classification_col)
-  ))
-
-# Count unique Study_id per classification
-counts <- metadata %>%
-  distinct(Study_id, !!sym(classification_col)) %>%
-  count(!!sym(classification_col), name = "n_studies") %>%
-  rename(classification = !!sym(classification_col)) %>%
-  mutate(classification = factor(classification,
-                                 levels = c("spatial", "temporal", "spatial and temporal")))
-
-print(counts)
-
-# Bar plot
-ggplot(counts,
-       aes(x = classification, y = n_studies, fill = classification)) +
-  geom_col(width = 0.6, colour = "white") +
-  geom_text(aes(label = n_studies), vjust = -0.5,
-            size = 3, fontface = "bold") +
-  scale_fill_manual(values = c("spatial" = "lightblue3",
-                               "temporal" = "lightblue3",
-                               "spatial and temporal" = "lightblue3")) +
-  labs(title = "Number of studies by spatial/temporal classification",
-       x = "",
-       y = "Number of studies") +
-  theme_minimal(base_size = 14) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
-        legend.position = "none")+
-  tme
 
 # Studies per bio regions ------ 
 # Summarize network-level information
