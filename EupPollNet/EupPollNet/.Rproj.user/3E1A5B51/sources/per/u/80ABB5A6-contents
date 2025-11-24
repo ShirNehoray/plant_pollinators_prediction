@@ -1,0 +1,94 @@
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(ggplot2)
+
+# --- Small example dataset ---
+data_new <- tibble(
+  Study_id = c("STUDY1","STUDY1","STUDY1","STUDY1",
+               "STUDY1","STUDY1","STUDY1","STUDY1",
+               "STUDY2","STUDY2","STUDY2","STUDY2"),
+  Network_id = c("N1","N1","N2","N2","N3","N3","N4","N4",
+                 "N5","N5","N6","N6"),
+  Plant_accepted_name = c("Rose", "Lavender", "Rose", "Tulip",
+                          "Lavender","Sunflower","Rose","Sunflower",
+                          "Rose","Rose", "Lavender", "Iris"),
+  Pollinator_accepted_name = c("Bombus terrestris","Apis mellifera",
+                               "Bombus terrestris","Osmia bicornis",
+                               "Bombus terrestris","Apis mellifera",
+                               "Xylocopa violacea","Osmia bicornis",
+                               "Bombus terrestris","Osmia bicornis",
+                               "Apis mellifera","Bombus terrestris")
+)
+
+# Replace spaces with "_"
+data_new <- data_new %>%
+  mutate(
+    Plant_accepted_name = gsub(" ", "_", Plant_accepted_name),
+    Pollinator_accepted_name = gsub(" ", "_", Pollinator_accepted_name)
+  )
+
+data_new
+
+study_summary_unique <- tibble(
+  Study_id = c("STUDY1", "STUDY2"),
+  some_value = c(1,1)
+)
+
+selected_study_ids <- unique(study_summary_unique$Study_id)
+interactions_filter <- data_new %>%
+  filter(Study_id %in% selected_study_ids)
+
+interactions_binary <- interactions_filter %>%
+  select(Study_id, Network_id, Plant_accepted_name, Pollinator_accepted_name) %>%
+  distinct() %>%
+  unite("interaction", Pollinator_accepted_name, Plant_accepted_name, sep = "_") %>%
+  mutate(presence = 1) %>%
+  pivot_wider(
+    names_from = Network_id,
+    values_from = presence,
+    values_fill = 0
+  )
+
+interactions_binary
+jaccard_results <- interactions_binary %>%
+  group_by(Study_id) %>%
+  nest() %>%
+  mutate(
+    jaccard_pairs = map(data, ~ {
+      
+      net_sets <- .x %>%
+        pivot_longer(
+          cols = -interaction,
+          names_to = "Network",
+          values_to = "value"
+        ) %>%
+        filter(value == 1) %>%                 
+        group_by(Network) %>%
+        summarise(interactions = list(interaction), .groups = "drop")
+      
+      if (nrow(net_sets) < 2) return(tibble())
+      
+      pairs <- combn(net_sets$Network, 2, simplify = FALSE)
+      
+      map_dfr(pairs, function(p) {
+        set1 <- net_sets$interactions[[which(net_sets$Network == p[1])]]
+        set2 <- net_sets$interactions[[which(net_sets$Network == p[2])]]
+        
+        inter <- length(intersect(set1, set2))
+        uni   <- length(union(set1, set2))
+        
+        tibble(
+          Network1 = p[1],
+          Network2 = p[2],
+          Jaccard  = ifelse(uni == 0, NA, inter / uni)
+        )
+      })
+    })
+  ) %>%
+  unnest(jaccard_pairs)
+
+jaccard_results
+
+

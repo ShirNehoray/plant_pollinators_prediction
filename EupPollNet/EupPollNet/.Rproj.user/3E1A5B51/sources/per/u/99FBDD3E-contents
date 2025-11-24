@@ -1,0 +1,77 @@
+jaccard_results <- interactions_binary %>%
+  group_by(Study_id) %>%
+  nest() %>%
+  mutate(
+    jaccard_pairs = map(data, ~ {
+      
+      # --- Convert long table into matrix ---
+      mat <- .x %>%
+        select(-interaction) %>%
+        as.matrix() %>%
+        t()
+      
+      network_names <- rownames(mat)
+      
+      if (nrow(mat) < 2) return(tibble())
+      
+      # --- Convert each network into a set of interactions with value=1 ---
+      sets <- apply(mat, 1, function(x) {
+        names(x)[x == 1]       # keep only the 1’s
+      })
+      
+      # --- Pairwise Jaccard calculation ---
+      combn(network_names, 2, simplify = FALSE) %>%
+        map_dfr(~{
+          a <- sets[[ .x[1] ]]
+          b <- sets[[ .x[2] ]]
+          
+          inter <- length(intersect(a, b))
+          uni   <- length(union(a, b))
+          
+          tibble(
+            Network1 = .x[1],
+            Network2 = .x[2],
+            Jaccard = ifelse(uni == 0, NA, inter / uni)
+          )
+        })
+    })
+  ) %>%
+  unnest(jaccard_pairs)
+
+print(jaccard_results)
+
+jaccard_clean <- jaccard_results %>% 
+  filter(!is.na(Jaccard))
+
+ggplot(jaccard_clean, aes(x = Study_id, y = Jaccard)) +
+  geom_boxplot(
+    fill = "lightblue3", 
+    color = "black", 
+    outlier.colour = "darkseagreen", 
+    outlier.shape = 16,
+    outlier.alpha = 0.7
+  ) +
+  labs(
+    title = "Jaccard index Between Networks Within Each Study",
+    x = "Study ID",
+    y = "Jaccard Index"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.2)
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray50"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 13),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )+
+  tme
+
+
+
+
+
