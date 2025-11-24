@@ -1,12 +1,25 @@
-study_summary_unique
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(dplyr)
+library(lubridate)
+library(dplyr)
+library(readr)
+library(ggplot2)
 
-selected_study_ids <- unique(study_summary_unique$Study_id)
-
-interactions_filter <- data_new %>%
-  filter(Study_id %in% selected_study_ids)
 
 
-interactions_binary <- interactions_filter %>%
+
+Interacion_data_filtered <- read.csv("Interactions_data_filtered_studies.csv", encoding = "latin1", stringsAsFactors = FALSE)
+tme <-  theme(axis.text = element_text(size = 10, color = "black"),
+              axis.title = element_text(size = 16, face = "bold"),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank())
+theme_set(theme_bw())
+
+
+interactions_binary <- Interacion_data_filtered %>%
   select(Study_id, Network_id, Plant_accepted_name, Pollinator_accepted_name) %>%
   distinct() %>%
   unite("interaction", Plant_accepted_name, Pollinator_accepted_name, sep = "_") %>%
@@ -21,10 +34,6 @@ interactions_binary <- interactions_filter %>%
 
 
 
-library(dplyr)
-library(tidyr)
-library(purrr)
-library(tibble)
 
 jaccard_results <- interactions_binary %>%
   group_by(Study_id) %>%
@@ -64,10 +73,14 @@ jaccard_results <- interactions_binary %>%
   ) %>%
   unnest(jaccard_pairs)
 
-print(jaccard_results)
-
 jaccard_clean <- jaccard_results %>% 
   filter(!is.na(Jaccard))
+
+write.csv(
+  jaccard_clean,
+  "Jaccard_results.csv",
+  row.names = FALSE
+)
 
 ggplot(jaccard_clean, aes(x = Study_id, y = Jaccard)) +
   geom_boxplot(

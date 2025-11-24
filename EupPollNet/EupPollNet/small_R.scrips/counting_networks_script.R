@@ -58,3 +58,14 @@ ggplot(network_distribution_no_large_network, aes(x = study_count, y = unique_ne
   ) +
   scale_x_continuous(breaks = seq(0, max(network_distribution$unique_networks, na.rm = TRUE), by = 1)) +
   tme
+
+
+networks_per_year_Mullen <- data %>%
+  filter(Study_id == "35_Mullen") %>%        # keep only this study
+  mutate(Year = year(ymd(Date))) %>%         # extract year from Date
+  distinct(Year, Network_id) %>%             # unique networks per year
+  group_by(Year) %>%
+  summarise(n_networks = n()) %>%
+  arrange(Year)
+
+networks_per_year_Mullen
