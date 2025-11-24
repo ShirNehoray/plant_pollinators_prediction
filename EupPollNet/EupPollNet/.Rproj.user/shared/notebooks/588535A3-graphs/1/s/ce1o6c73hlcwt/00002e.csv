@@ -1,5 +1,0 @@
-"0","# Classify if Tempural or Spatial
-metadata <- read.csv(""metadata.csv"")
-"
-"2","Error in file(file, ""rt"") : cannot open the connection
-"
