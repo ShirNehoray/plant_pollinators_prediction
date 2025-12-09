@@ -1,0 +1,26 @@
+﻿Study_id,n_networks,n_plant,n_pollinators,n_total_species,Sampling_method,Study_classification
+10_Vanbergen,12,171,243,414,Transect,spatial
+12_Ockinger,38,80,96,176,Transect,spatial and temporal
+18_Bartomeus,16,47,152,199,Transect,spatial
+19_Jauker,32,100,138,238,Transect,spatial
+1_Bartomeus,12,32,103,135,Focal_observation,spatial
+20_Hoiss,15,118,352,470,Plot,spatial
+21_Hopfenmuller,23,89,119,208,Variable_transect,spatial
+26_Castro,12,8,13,21,Focal_observation,spatial
+28_Sutter,17,111,77,188,Transect,spatial and temporal
+29_Magrach,17,56,153,209,Transect,spatial and temporal
+33_Power,54,23,23,46,Transect,spatial
+34_Stanley,83,57,23,80,Transect,spatial
+36_Larkin,23,48,45,93,Transect,spatial
+37_White,21,172,77,249,Transect,spatial
+38_Maurer,12,191,146,337,Transect,spatial
+39_Schweiger,117,251,234,485,Transect,spatial
+3_Michez,71,166,130,296,Transect,spatial
+43_Knight,12,48,203,251,Transect,spatial
+44_Knight,18,129,303,432,Transect,spatial
+4_Marini,18,149,357,506,Focal_observation,spatial
+52_Hadrava,48,124,229,353,Transect,spatial and temporal
+54_Lazaro,20,107,355,462,Transect,spatial
+5_Marini,51,221,379,600,Focal_observation,spatial
+6_Marini,94,82,142,224,Focal_observation,spatial
+7_Scheper,49,86,147,233,Transect,spatial
