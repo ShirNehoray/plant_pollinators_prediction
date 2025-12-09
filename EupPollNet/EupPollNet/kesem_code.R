@@ -830,22 +830,22 @@ A_l <- A_l %>%
                                    paste0("layer_", layer_num - 1, "_", layer_num)))
 
 
-# Aggregate data
-aggregated_df <- A_l %>%
-  group_by(aggregated_layer, node_from, node_to, type) %>%
-  summarise(weight = sum(weight), .groups = "drop") %>%
-  mutate(layer_from = aggregated_layer, layer_to = aggregated_layer) %>%
-  select(layer_from, node_from, layer_to, node_to, weight, type)
-
-# set new layer names using the old ones
-aggregated_df <- aggregated_df %>% 
-  separate_wider_delim(layer_from, delim = "_", names = c("t", "l1", "l2"), cols_remove = FALSE) %>%
-  mutate(island_id = paste0("layer_", as.numeric(l2)/2))  %>%
-  mutate(layer_from = island_id, layer_to = island_id)%>%
-  select(layer_from, node_from, layer_to, node_to, weight, type)
-
-# View updated aggregated_df
-print(aggregated_df)
+# # Aggregate data
+# aggregated_df <- A_l %>%
+#   group_by(aggregated_layer, node_from, node_to, type) %>%
+#   summarise(weight = sum(weight), .groups = "drop") %>%
+#   mutate(layer_from = aggregated_layer, layer_to = aggregated_layer) %>%
+#   select(layer_from, node_from, layer_to, node_to, weight, type)
+# 
+# # set new layer names using the old ones
+# aggregated_df <- aggregated_df %>% 
+#   separate_wider_delim(layer_from, delim = "_", names = c("t", "l1", "l2"), cols_remove = FALSE) %>%
+#   mutate(island_id = paste0("layer_", as.numeric(l2)/2))  %>%
+#   mutate(layer_from = island_id, layer_to = island_id)%>%
+#   select(layer_from, node_from, layer_to, node_to, weight, type)
+# 
+# # View updated aggregated_df
+# print(aggregated_df)
 
 # save aggregated network to a file
 # write.csv(aggregated_df, file = "prediction_pipeline_for_publication/results/network_island_scale.csv", row.names = FALSE)
@@ -2003,3 +2003,4 @@ ggplot(missing_links, aes(x = pred_freq, y = missing_prob, color = ext_support))
     subtitle = "Combining frequency of prediction and number of external islands"
   ) +
   theme_minimal(base_size = 12) + tme
+
