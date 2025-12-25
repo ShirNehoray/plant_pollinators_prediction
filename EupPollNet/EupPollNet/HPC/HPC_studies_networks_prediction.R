@@ -1,29 +1,52 @@
 # ---- Predicting interactions across space with SVD ----
 # this pipeline allows us to predict missing links using the softImpute algorithm, calculate evaluators, have some stats and correlate the evaluators with ecological data.
-# here we focus on island scale, but there is a code for site-scale analysis and comparison between scales.
-# stages are according to the pipeline figure (Fig. 1).
-### code for publication ###
+# here we focus on different networks within one study.
+
+# bash intro
+#! /gpfs0/shai/projects/software/R4/R-4.4.1/bin/Rscript
+.libPaths("/gpfs0/shai/users/shirneho/R/x86_64-pc-linux-gnu-library/4.4")
+print(.libPaths())
+print(sessionInfo())
+Sys.setlocale(category = "LC_ALL", locale = "")
+
+# read args given in command line:
+# read args given in command line:
+JOB_ID <- Sys.getenv("JOB_ID")
+if (length(commandArgs(trailingOnly=TRUE))==0) { # make sure we have commands
+  stop('No arguments were found!') # the script will not run without arguments
+} else {
+  args <- commandArgs(trailingOnly=TRUE)
+  Study_id_chose <- (args[1])
+}
+
 ## ---- load libraries ----
-library(tidyverse)
-library(ggplot2)
-library(dplyr)
-library(reshape2)
-library(ggpubr)
-library(gridExtra)
-library(grid)
-library(scales)
-library(cowplot)  # for get_legend()
-library(corrplot)
-library(patchwork)
-library(vegan)
-library(ggnewscale)
-library(stringr)
-library(softImpute)
-library(ecodist)
-library(rstatix)
-library(ggrepel)
-library(pROC)
-library(PRROC)
+
+stopifnot(getRversion() >= "4.4.1")
+
+options(
+  repos = c(CRAN = "http://cran.r-project.org"),
+  Ncpus = 1
+)
+
+user_lib <- "~/R/4.4"
+dir.create(user_lib, showWarnings = FALSE, recursive = TRUE)
+.libPaths(c(user_lib, .libPaths()))
+
+packages <- c(
+  "tidyverse", "ggplot2", "dplyr", "reshape2", "ggpubr",
+  "gridExtra", "grid", "scales", "cowplot", "corrplot",
+  "patchwork", "vegan", "ggnewscale", "stringr", "softImpute",
+  "ecodist", "rstatix", "ggrepel", "pROC", "PRROC"
+)
+
+missing <- setdiff(packages, rownames(installed.packages()))
+print(missing)
+
+if (length(missing)) {
+  install.packages(missing, dependencies = TRUE)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
 
 ## ---- themes ----
 tme <-  theme(axis.text = element_text(size = 18, color = "black"),
@@ -34,10 +57,12 @@ tme <-  theme(axis.text = element_text(size = 18, color = "black"),
               axis.ticks = element_line(color = "black"))
 theme_set(theme_bw())
 
+# Study_id_chose <- "1_Bartomeus"
+
 ## ---- parameters ----
-Interaction_data <- read.csv("./csv/Interaction_edges.csv", encoding = "latin1", stringsAsFactors = FALSE)
+Interaction_data <- read.csv("Interaction_edges.csv", encoding = "latin1", stringsAsFactors = FALSE)
 one_study_interactions <- Interaction_data %>% 
-  filter(Study_id == "1_Bartomeus")
+  filter(Study_id == Study_id_chose)
 
 # emln_id <- "NA"
 prop_ones_to_remove <- 0.2 # proportion of existing links to withhold
@@ -822,6 +847,7 @@ combine_two_plots <- function(p1, p2,
 A_l <-  one_study_interactions
 
 
+
 # Create lookup table for network IDs
 layer_names <- unique(A_l$layer_from)
 layer_map <- data.frame(
@@ -835,6 +861,7 @@ aggregated_df <- A_l %>%
   mutate(layer_from = new_id,
          layer_to   = new_id) %>%
   select(layer_from, node_from, layer_to, node_to, weight, type)
+
 
 
 # # Aggregate data
@@ -858,7 +885,7 @@ aggregated_df <- A_l %>%
 # Total number of layers
 num_layers <- length(unique(aggregated_df$layer_from))
 
-results_file <- "predictions_networks_scale.rds"
+results_file <- paste0("predictions_networks_scale_", Study_id, ".rds")
 
 # read the prediction data if you already have it, and if not generate predictions
 
@@ -978,6 +1005,7 @@ if (file.exists(results_file)) {
         cbind(
           data.frame(
             # emln_id = emln_id,
+            Study_id = Study_id_chose,
             train_layer = layers_to_train,
             test_layer = layer_to_predict,
             prop_ones_removed = prop_ones_to_remove,
@@ -1034,7 +1062,7 @@ df_thresh <- df_prepped %>%
   mutate(
     predicted_bin = if_else(predicted_prob > threshold, 1, 0) #binary
   ) %>%
-  group_by(train_layer, test_layer, itr, threshold) %>% # removed emln_id
+  group_by(Study_id, train_layer, test_layer, itr, threshold) %>% # removed emln_id
   summarise(
     TP = sum(original_binary == 1 & predicted_bin == 1),
     FN = sum(original_binary == 1 & predicted_bin == 0),
@@ -1052,7 +1080,7 @@ df_thresh <- df_prepped %>%
     #.groups = "drop"
   ) %>%
   ungroup() %>%
-  group_by(train_layer, test_layer, threshold) %>% # removed emln_id
+  group_by(Study_id, train_layer, test_layer, threshold) %>% # removed emln_id
   summarise(
     TP = mean(TP, na.rm = TRUE),
     FN = mean(FN, na.rm = TRUE),
@@ -1070,7 +1098,11 @@ df_thresh <- df_prepped %>%
   ungroup() 
 
 
-write.csv(df_thresh, "df_thresh_1_Bartomeus.csv")
+write.csv(
+  df_thresh,
+  paste0("df_thresh_", Study_id, ".csv"),
+  row.names = FALSE
+)
 
 # 3) average across emln_id/layer combos and pivot long
 df_avg <- df_thresh %>%
@@ -1097,21 +1129,20 @@ df_avg_plot <- df_avg %>% mutate(metric = recode(metric,
 optimal_threshold <- ggplot(df_avg_plot, aes(threshold, value, color = metric)) +
   geom_line(size = 1) +
   labs(
-    x     = "Probability threshold",
-    y     = "Average metric",
+    x = paste("Probability threshold - Study:", Study_id),
+    y = "Average metric",
     color = "Metric"
   ) +
   scale_color_brewer(palette = "Pastel2") +
   tme
 
-# pdf(
-#   file   = "results/paper_figs/optimal_threshold.pdf",
-#   width  = 5,    # inches
-#   height = 4,
-#   family = "Helvetica"   # or another installed font
-# )
-# print(optimal_threshold)
-# dev.off()     # close the file
+
+ggsave(
+  file = paste0("optimal_threshold_", Study_id, ".pdf"),
+  width = 8,
+  height = 6
+)
+
 
 df_eval <- df %>%
   filter(removed == 1) %>%
@@ -1119,7 +1150,7 @@ df_eval <- df %>%
     predicted_prob  = sigmoid(predicted_values),
     original_binary = if_else(original_links > 0, 1L, 0L)
   ) %>%
-  group_by(train_layer, test_layer, itr) %>% # removed emln_id
+  group_by(Study_id, train_layer, test_layer, itr) %>% # removed emln_id
   summarise(
     # ROC-AUC (coerce to numeric!)
     auc_roc = tryCatch({
@@ -1142,7 +1173,7 @@ df_eval <- df %>%
   ungroup()
 
 df_eval_summary <- df_eval %>%
-  group_by(train_layer, test_layer) %>% # removed emln_id
+  group_by(Study_id, train_layer, test_layer) %>% # removed emln_id
   summarise(
     auc_roc_mean = mean(auc_roc, na.rm = TRUE),
     auc_roc_sd   = sd(auc_roc,   na.rm = TRUE),
@@ -1214,9 +1245,13 @@ df_removed_flagged <- df_removed %>%
     obs_elsewhere = (n_obs_total - (original_binary == 1)) >= 1  # observed in ≥1 other island
   )
 
-# write.csv(df_removed_flagged, "df_removed_flagged_1_Bartomeus.csv")
-#table for box plot
-# produce results table
+write.csv(
+  df_removed_flagged,
+  paste0("df_removed_flagged_", Study_id, ".csv"),
+  row.names = FALSE
+)
+
+
 
 
 # produce results table
@@ -1358,6 +1393,7 @@ flows_long <- flows %>%
     # also lock the axis order (left -> middle -> right)
     axis = factor(axis, levels = c("Confusion", "Validation", "Subtype"))
   )
+
 
 # Plot
 # gg <- ggplot(
@@ -1686,6 +1722,7 @@ gg <- gg +
 gg
 
 gg <- gg +
+  ggtitle(paste("Flows for Study:", Study_id)) + 
   theme_minimal(base_size = 16) +
   theme(
     panel.grid = element_blank(),
@@ -1699,18 +1736,19 @@ gg <- gg +
   )
 
 gg
-# gg <- gg + labs(title = NULL, subtitle = NULL)
-# gg
 
-pdf( file = "alluvial_canary.pdf", 
-     width = 12, # inches 
-     height = 7, 
-     family = "Helvetica") # or another installed font
+
+pdf(
+  file   = paste0("alluvial_", Study_id, ".pdf"), 
+  width  = 12, 
+  height = 7, 
+  family = "Helvetica"
+)
 print(gg)
 dev.off()
 
 png(
-  filename = "alluvial_canary.png",
+  filename = paste0("alluvial_", Study_id, ".png"),
   width    = 12,
   height   = 7,
   units    = "in",
@@ -1723,105 +1761,104 @@ print(gg)
 
 dev.off()
 
-# Optional: hide all category labels
-show_labels <- FALSE   # TRUE = show; FALSE = remove all
-
-if (show_labels) {
-  gg <- gg +
-    geom_text(
-      data = label_df,
-      inherit.aes = FALSE,
-      aes(x = x_mid + label_nudge_x,
-          y = y_mid,
-          label = label_final,
-          color = axis),
-      fontface = "bold",
-      size = name_size,
-      family = font_family,
-      hjust = 0
-    )
-}
-
-# ---- certainty in missing links analysis ----
-# Calculate per-link statistics across iterations and islands
-
-link_stats <- df_removed %>%
-  group_by(node_from, node_to, test_layer) %>%
-  summarise(
-    obs = max(original_binary),
-    pred_freq = mean(predicted_bin_sigm, na.rm = TRUE),
-    pred_prob_mean = mean(predicted_prob_sigm, na.rm = TRUE),
-    n_iter = n(),
-    .groups = "drop"
-  )
-
-# Add external support info
-# Compute how many other islands each link is actually observed in:
-
-link_presence <- link_stats %>%
-  group_by(node_from, node_to) %>%
-  summarise(
-    n_islands_obs = sum(obs),
-    n_islands_total = n(),
-    .groups = "drop"
-  )
-
-link_stats2 <- link_stats %>%
-  left_join(link_presence, by = c("node_from", "node_to")) %>%
-  mutate(
-    obs_elsewhere = (n_islands_obs > 0 & obs == 0),
-    ext_support = if_else(n_islands_total > 1,
-                          (n_islands_obs - obs) / (n_islands_total - 1),
-                          0)
-  )
-
-# Compute a posterior-like missingness probability
+# # Optional: hide all category labels
+# show_labels <- FALSE   # TRUE = show; FALSE = remove all
 # 
-# We’ll use a logistic-style function where external support has stronger weight:
-#   
-# P(missing link is real)=1−exp(−k×(α×f+β×s))
+# if (show_labels) {
+#   gg <- gg +
+#     geom_text(
+#       data = label_df,
+#       inherit.aes = FALSE,
+#       aes(x = x_mid + label_nudge_x,
+#           y = y_mid,
+#           label = label_final,
+#           color = axis),
+#       fontface = "bold",
+#       size = name_size,
+#       family = font_family,
+#       hjust = 0
+#     )
+# }
+
+# # ---- certainty in missing links analysis ----
+# # Calculate per-link statistics across iterations and networks
 # 
-# where:
-#   
-#   𝑓
-# f = prediction frequency,
+# link_stats <- df_removed %>%
+#   group_by(node_from, node_to, test_layer) %>%
+#   summarise(
+#     obs = max(original_binary),
+#     pred_freq = mean(predicted_bin_sigm, na.rm = TRUE),
+#     pred_prob_mean = mean(predicted_prob_sigm, na.rm = TRUE),
+#     n_iter = n(),
+#     .groups = "drop"
+#   )
 # 
-# 𝑠
-# s = external support,
+# # Add external support info
+# # Compute how many other islands each link is actually observed in:
 # 
-# 𝛼
-# α and 
-# 𝛽
-# β are weights (e.g. 1 and 3 if you want to emphasize external support),
+# link_presence <- link_stats %>%
+#   group_by(node_from, node_to) %>%
+#   summarise(
+#     n_islands_obs = sum(obs),
+#     n_islands_total = n(),
+#     .groups = "drop"
+#   )
 # 
-# 𝑘
-# k = scaling factor controlling curve steepness.
-
-alpha <- 1    # weight for prediction frequency
-beta  <- 3    # weight for external support (heavier)
-k     <- 4    # overall steepness
-
-missing_links <- link_stats2 %>%
-  filter(obs == 0, obs_elsewhere) %>%
-  mutate(
-    score = alpha * pred_freq + beta * ext_support,
-    missing_prob = 1 - exp(-k * score)
-  ) %>%
-  arrange(desc(missing_prob))
-
-# (Optional) Visualize the relationship
-
-
-ggplot(missing_links, aes(x = pred_freq, y = missing_prob, color = ext_support)) +
-  geom_point(alpha = 0.7) +
-  scale_color_viridis_c(option = "plasma", end = 0.9) +
-  geom_smooth(method = "loess", se = FALSE, color = "grey30") +
-  labs(
-    x = "Prediction frequency across iterations",
-    y = "Estimated probability of true missing link",
-    color = "External support\n(proportion of islands)",
-    title = "Evidence-weighted probability of true missing links",
-    subtitle = "Combining frequency of prediction and number of external islands"
-  ) +
-  theme_minimal(base_size = 12) + tme
-
+# link_stats2 <- link_stats %>%
+#   left_join(link_presence, by = c("node_from", "node_to")) %>%
+#   mutate(
+#     obs_elsewhere = (n_islands_obs > 0 & obs == 0),
+#     ext_support = if_else(n_islands_total > 1,
+#                           (n_islands_obs - obs) / (n_islands_total - 1),
+#                           0)
+#   )
+# 
+# # Compute a posterior-like missingness probability
+# # 
+# # We’ll use a logistic-style function where external support has stronger weight:
+# #   
+# # P(missing link is real)=1−exp(−k×(α×f+β×s))
+# # 
+# # where:
+# #   
+# #   𝑓
+# # f = prediction frequency,
+# # 
+# # 𝑠
+# # s = external support,
+# # 
+# # 𝛼
+# # α and 
+# # 𝛽
+# # β are weights (e.g. 1 and 3 if you want to emphasize external support),
+# # 
+# # 𝑘
+# # k = scaling factor controlling curve steepness.
+# 
+# alpha <- 1    # weight for prediction frequency
+# beta  <- 3    # weight for external support (heavier)
+# k     <- 4    # overall steepness
+# 
+# missing_links <- link_stats2 %>%
+#   filter(obs == 0, obs_elsewhere) %>%
+#   mutate(
+#     score = alpha * pred_freq + beta * ext_support,
+#     missing_prob = 1 - exp(-k * score)
+#   ) %>%
+#   arrange(desc(missing_prob))
+# 
+# # (Optional) Visualize the relationship
+# 
+# 
+# ggplot(missing_links, aes(x = pred_freq, y = missing_prob, color = ext_support)) +
+#   geom_point(alpha = 0.7) +
+#   scale_color_viridis_c(option = "plasma", end = 0.9) +
+#   geom_smooth(method = "loess", se = FALSE, color = "grey30") +
+#   labs(
+#     x = "Prediction frequency across iterations",
+#     y = "Estimated probability of true missing link",
+#     color = "External support\n(proportion of islands)",
+#     title = "Evidence-weighted probability of true missing links",
+#     subtitle = "Combining frequency of prediction and number of external islands"
+#   ) +
+#   theme_minimal(base_size = 12) + tme
