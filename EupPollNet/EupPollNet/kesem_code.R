@@ -7,7 +7,6 @@
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
-library(emln)
 library(reshape2)
 library(ggpubr)
 library(gridExtra)
@@ -36,10 +35,11 @@ tme <-  theme(axis.text = element_text(size = 18, color = "black"),
 theme_set(theme_bw())
 
 ## ---- parameters ----
-Interaction_data <- read.csv("./csv/Interaction_edges.csv", encoding = "latin1")
+Interaction_data <- read.csv("./csv/Interaction_edges.csv", encoding = "latin1", stringsAsFactors = FALSE)
 one_study_interactions <- Interaction_data %>% 
-  filter(Study_id == "29_Magrach")
+  filter(Study_id == "1_Bartomeus")
 
+emln_id <- "NA"
 prop_ones_to_remove <- 0.2 # proportion of existing links to withhold
 n_sim <- 50 # number of random link withholding and prediction iterations
 set.seed(42) # the answer to everything
@@ -821,13 +821,20 @@ combine_two_plots <- function(p1, p2,
 ### ---- load matrices ----
 A_l <-  one_study_interactions
 
-# aggregate to island scale
-# Extract numeric layer numbers
-A_l <- A_l %>%
-  mutate(layer_num = as.numeric(sub("_.*", "", layer_from))) %>% 
-  mutate(aggregated_layer = ifelse(layer_num %% 2 == 1,
-                                   paste0("layer_", layer_num, "_", layer_num + 1),
-                                   paste0("layer_", layer_num - 1, "_", layer_num)))
+
+# Create lookup table for network IDs
+layer_names <- unique(A_l$layer_from)
+layer_map <- data.frame(
+  original = layer_names,
+  new_id = paste0("layer_", seq_along(layer_names))
+)
+
+# Apply the mapping
+aggregated_df <- A_l %>%
+  left_join(layer_map, by = c("layer_from" = "original")) %>%
+  mutate(layer_from = new_id,
+         layer_to   = new_id) %>%
+  select(layer_from, node_from, layer_to, node_to, weight, type)
 
 
 # # Aggregate data
@@ -836,16 +843,14 @@ A_l <- A_l %>%
 #   summarise(weight = sum(weight), .groups = "drop") %>%
 #   mutate(layer_from = aggregated_layer, layer_to = aggregated_layer) %>%
 #   select(layer_from, node_from, layer_to, node_to, weight, type)
-# 
-# # set new layer names using the old ones
-# aggregated_df <- aggregated_df %>% 
+
+# set new layer names using the old ones
+# aggregated_df <- aggregated_df %>%
 #   separate_wider_delim(layer_from, delim = "_", names = c("t", "l1", "l2"), cols_remove = FALSE) %>%
 #   mutate(island_id = paste0("layer_", as.numeric(l2)/2))  %>%
 #   mutate(layer_from = island_id, layer_to = island_id)%>%
 #   select(layer_from, node_from, layer_to, node_to, weight, type)
-# 
-# # View updated aggregated_df
-# print(aggregated_df)
+
 
 # save aggregated network to a file
 # write.csv(aggregated_df, file = "prediction_pipeline_for_publication/results/network_island_scale.csv", row.names = FALSE)
@@ -1027,7 +1032,7 @@ df_prepped <- df %>%
 df_thresh <- df_prepped %>%
   tidyr::expand_grid(threshold = thresholds) %>%  # <-- switch here
   mutate(
-    predicted_bin = if_else(predicted_prob > threshold, 1, 0)
+    predicted_bin = if_else(predicted_prob > threshold, 1, 0) #binary
   ) %>%
   group_by(emln_id, train_layer, test_layer, itr, threshold) %>%
   summarise(
@@ -1035,13 +1040,13 @@ df_thresh <- df_prepped %>%
     FN = sum(original_binary == 1 & predicted_bin == 0),
     TN = sum(original_binary == 0 & predicted_bin == 0),
     FP = sum(original_binary == 0 & predicted_bin == 1),
-    specificity      = TN / (TN + FP),
-    precision        = TP / (TP + FP),
-    recall           = TP / (TP + FN),
-    f1_score         = 2 * (precision * recall) / (precision + recall),
+    specificity      = TN / (TN + FP), #True negative rate
+    precision        = TP / (TP + FP), #Positive Predictive Value
+    recall           = TP / (TP + FN), #True Positive Rate
+    f1_score         = 2 * (precision * recall) / (precision + recall),  #mean of precision and recall
     balanced_accuracy= (recall + specificity) / 2,
     mcc = (TP * TN - FP * FN) /
-      sqrt((TP + FP)*(TP + FN)*(TN + FP)*(TN + FN)),
+      sqrt((TP + FP)*(TP + FN)*(TN + FP)*(TN + FN)),  #Matthews Correlation Coefficient (-1 to 1)
     mse  = mean((predicted_values - original_links)^2, na.rm = TRUE),
     rmse = sqrt(mse)#,
     #.groups = "drop"
@@ -1063,6 +1068,9 @@ df_thresh <- df_prepped %>%
     rmse = mean(rmse, na.rm = TRUE)
   ) %>%
   ungroup() 
+
+
+write.csv(df_thresh, "df_thresh_1_Bartomeus.csv")
 
 # 3) average across emln_id/layer combos and pivot long
 df_avg <- df_thresh %>%
@@ -1167,198 +1175,6 @@ df_removed <- df %>%
 
 
 # ---- link taxonomy ----
-# # let's try on 1 itr
-# # only self-predictions
-# 
-# df_self_itr1 <- df_removed %>% filter(train_layer == test_layer) %>% 
-#   filter(itr == 1)
-# 
-# # Assumes df_self_itr1 is in memory with columns:
-# # original_binary (0/1), predicted_bin_sigm (0/1), test_layer, node_from, node_to
-# # If needed, restrict to self & iter 1:
-# # df_self_itr1 <- df_self_itr1 %>% filter(test_layer == train_layer, itr == 1)
-# 
-# # Directed interaction id; for undirected, sort node names before pasting.
-# df1 <- df_self_itr1 %>%
-#   mutate(
-#     original_binary    = as.integer(original_binary),
-#     predicted_bin_sigm = as.integer(predicted_bin_sigm),
-#     interaction_id     = paste0(node_from, " -> ", node_to)
-#   )
-# 
-# # For each interaction, how many islands observe it?
-# obs_counts <- df1 %>%
-#   group_by(interaction_id) %>%
-#   summarise(n_obs_total = sum(original_binary == 1, na.rm = TRUE), .groups = "drop")
-# 
-# # Join back; compute "observed elsewhere" relative to focal island
-# df2 <- df1 %>%
-#   left_join(obs_counts, by = "interaction_id") %>%
-#   mutate(
-#     obs_elsewhere = (n_obs_total - (original_binary == 1)) >= 1,  # TRUE if observed in ≥1 other island
-#     is_all_zero   = n_obs_total == 0,
-#     is_unique     = n_obs_total == 1,
-#     is_shared     = n_obs_total >= 2
-#   )
-# 
-##### ---- Confusion at focal-island level 
-# TP <- sum(df2$original_binary == 1 & df2$predicted_bin_sigm == 1, na.rm = TRUE)
-# FP <- sum(df2$original_binary == 0 & df2$predicted_bin_sigm == 1, na.rm = TRUE)
-# TN <- sum(df2$original_binary == 0 & df2$predicted_bin_sigm == 0, na.rm = TRUE)
-# FN <- sum(df2$original_binary == 1 & df2$predicted_bin_sigm == 0, na.rm = TRUE)
-# 
-### ## ---- Subcategories (match confusion totals 1-to-1)
-# # Observed exactly once (local-only island rows)
-# locally_unique_links <- df2 %>%
-#   filter(is_unique, original_binary == 1, predicted_bin_sigm == 1) %>%
-#   nrow()
-# 
-# unsupported_links <- df2 %>%
-#   filter(is_unique, original_binary == 1, predicted_bin_sigm == 0) %>%
-#   nrow()
-# 
-# # Shared links (observed in ≥2 islands): per focal island where observed
-# confirmed_links <- df2 %>%
-#   filter(is_shared, original_binary == 1, predicted_bin_sigm == 1) %>%
-#   nrow()
-# 
-# cryptic_links <- df2 %>%
-#   filter(is_shared, original_binary == 1, predicted_bin_sigm == 0) %>%
-#   nrow()
-# 
-# # All-zero links (never observed anywhere): per focal island rows
-# likely_forbidden <- df2 %>%
-#   filter(is_all_zero, original_binary == 0, predicted_bin_sigm == 0) %>%
-#   nrow()
-# 
-# spurious_links <- df2 %>%
-#   filter(is_all_zero, original_binary == 0, predicted_bin_sigm == 1) %>%
-#   nrow()
-# 
-# # Absent here but observed elsewhere
-# feasible_links <- df2 %>%
-#   filter(original_binary == 0, obs_elsewhere, predicted_bin_sigm == 0) %>%
-#   nrow()
-# 
-# possibly_missing_links <- df2 %>%
-#   filter(original_binary == 0, obs_elsewhere, predicted_bin_sigm == 1) %>%
-#   nrow()
-# 
-### ## ---- Final table
-# final_global_table <- tibble::tibble(
-#   Category = c(
-#     "TP","FP","TN","FN",
-#     "locally_unique_links","unsupported_links",
-#     "likely_forbidden","spurious_links",
-#     "confirmed_links","cryptic_links",
-#     "feasible_links","possibly_missing_links"
-#   ),
-#   Count = c(
-#     TP, FP, TN, FN,
-#     locally_unique_links, unsupported_links,
-#     likely_forbidden, spurious_links,
-#     confirmed_links, cryptic_links,
-#     feasible_links, possibly_missing_links
-#   )
-# )
-# 
-# # Optional: quick consistency checks
-# stopifnot(TP == confirmed_links + locally_unique_links)
-# stopifnot(FN == cryptic_links + unsupported_links)
-# stopifnot(FP == spurious_links + possibly_missing_links)
-# stopifnot(TN == likely_forbidden + feasible_links)
-# 
-# final_global_table
-# 
-# ## ---- all iterations
-# # ---- INPUT: df_removed with 50 iterations
-# # Expected cols: original_binary (0/1), predicted_bin_sigm (0/1), test_layer, node_from, node_to, itr
-# # restrict to self-predictions:
-# df_removed <- df_removed %>% filter(test_layer == train_layer)
-# 
-# df3 <- df_removed %>%
-#   mutate(
-#     original_binary    = as.integer(original_binary),
-#     predicted_bin_sigm = as.integer(predicted_bin_sigm),
-#     interaction_id     = paste0(node_from, " -> ", node_to)
-#   )
-# 
-# # ---- OBSERVATION COUNTS ACROSS ISLANDS (stable across iters)
-# # Use DISTINCT to avoid counting the same island/interaction multiple times across iterations
-# obs_counts <- df3 %>%
-#   distinct(test_layer, interaction_id, original_binary) %>%
-#   group_by(interaction_id) %>%
-#   summarise(n_obs_total = sum(original_binary == 1, na.rm = TRUE), .groups = "drop")
-# 
-# # Join back once; compute flags relative to each focal island row
-# df4 <- df3 %>%
-#   left_join(obs_counts, by = "interaction_id") %>%
-#   mutate(
-#     is_all_zero = n_obs_total == 0,
-#     is_unique   = n_obs_total == 1,
-#     is_shared   = n_obs_total >= 2,
-#     obs_elsewhere = (n_obs_total - (original_binary == 1)) >= 1  # observed in ≥1 other island
-#   )
-# 
-# # ---- PER-ITERATION FINAL TABLE (same structure as your single-iteration table)
-# final_table_by_iter <- df4 %>%
-#   group_by(itr) %>%
-#   summarise(
-#     TP = sum(original_binary == 1 & predicted_bin_sigm == 1),
-#     FP = sum(original_binary == 0 & predicted_bin_sigm == 1),
-#     TN = sum(original_binary == 0 & predicted_bin_sigm == 0),
-#     FN = sum(original_binary == 1 & predicted_bin_sigm == 0),
-#     
-#     locally_unique_links = sum(is_unique  & original_binary == 1 & predicted_bin_sigm == 1),
-#     unsupported_links    = sum(is_unique  & original_binary == 1 & predicted_bin_sigm == 0),
-#     
-#     confirmed_links      = sum(is_shared  & original_binary == 1 & predicted_bin_sigm == 1),
-#     cryptic_links        = sum(is_shared  & original_binary == 1 & predicted_bin_sigm == 0),
-#     
-#     likely_forbidden     = sum(is_all_zero & original_binary == 0 & predicted_bin_sigm == 0),
-#     spurious_links       = sum(is_all_zero & original_binary == 0 & predicted_bin_sigm == 1),
-#     
-#     feasible_links       = sum(original_binary == 0 & obs_elsewhere & predicted_bin_sigm == 0),
-#     possibly_missing_links = sum(original_binary == 0 & obs_elsewhere & predicted_bin_sigm == 1),
-#     .groups = "drop"
-#   ) %>%
-#   tidyr::pivot_longer(-itr, names_to = "Category", values_to = "Count") %>%
-#   arrange(itr, Category)
-# 
-# # ---- SUMMARY ACROSS ITERATIONS (mean/sd/min/max per category)
-# final_table_summary <- final_table_by_iter %>%
-#   group_by(Category) %>%
-#   summarise(
-#     mean = mean(Count), sd = sd(Count),
-#     min = min(Count), max = max(Count),
-#     .groups = "drop"
-#   ) %>%
-#   arrange(Category)
-# 
-# # ---- OPTIONAL: per-link/per-island frequencies across iterations
-# # How often (proportion of iterations) does a given focal row fall into each category?
-# per_link_island_freq <- df4 %>%
-#   group_by(test_layer, interaction_id) %>%
-#   summarise(
-#     n_iter = n(),
-#     p_locally_unique = mean(is_unique   & original_binary == 1 & predicted_bin_sigm == 1),
-#     p_unsupported    = mean(is_unique   & original_binary == 1 & predicted_bin_sigm == 0),
-#     p_confirmed      = mean(is_shared   & original_binary == 1 & predicted_bin_sigm == 1),
-#     p_cryptic        = mean(is_shared   & original_binary == 1 & predicted_bin_sigm == 0),
-#     p_likely_forbidden = mean(is_all_zero & original_binary == 0 & predicted_bin_sigm == 0),
-#     p_spurious         = mean(is_all_zero & original_binary == 0 & predicted_bin_sigm == 1),
-#     p_feasible         = mean(original_binary == 0 & obs_elsewhere & predicted_bin_sigm == 0),
-#     p_possibly_missing = mean(original_binary == 0 & obs_elsewhere & predicted_bin_sigm == 1),
-#     .groups = "drop"
-#   )
-# 
-# # --- OUTPUTS ---
-# # 1) final_table_by_iter  -> one table per iteration (long format)
-# # 2) final_table_summary  -> mean/sd/min/max across 50 iterations
-# # 3) per_link_island_freq -> optional diagnostics (proportions per focal island & link)
-# final_table_by_iter
-# final_table_summary
-# # per_link_island_freq  # uncomment to inspect
 
 ## ---- full analysis ----
 # run the flagging logic on the full data set (including non-withheld interactions)
@@ -1374,7 +1190,7 @@ df_self <- df_self %>%
     interaction_id     = paste0(node_from, " -> ", node_to)
   )
 
-# Observation count per interaction across all islands
+# Observation count per interaction across all islands (networks)- sum the binary
 obs_counts <- df_self %>%
   distinct(test_layer, interaction_id, original_binary) %>%
   group_by(interaction_id) %>%
@@ -1397,6 +1213,11 @@ df_removed_flagged <- df_removed %>%
     is_shared     = n_obs_total >= 2,
     obs_elsewhere = (n_obs_total - (original_binary == 1)) >= 1  # observed in ≥1 other island
   )
+
+# write.csv(df_removed_flagged, "df_removed_flagged_1_Bartomeus.csv")
+#table for box plot
+# produce results table
+
 
 # produce results table
 final_table_by_iter <- df_removed_flagged %>%
